@@ -13,9 +13,44 @@ function authorize(token){
     return balancer.authorize(token).status
 }
 function handleRequests(data){
-    if(data.type == "connect"){
-       return balancer.connect(data.token)
-    }
+     switch(data.type){
+        case "connect":
+            if(!data.token){
+                return JSON.stringify({
+                    status:403,
+                    message:"Unauthorized"
+                })
+            }
+            return balancer.connect(data.token)
+             
+        case "request":
+            if(!data.requestBody){
+                return JSON.stringify({
+                    status:403,
+                    message:"Missing requestBody"
+                })
+            }
+            if(!data.requestBody.token){
+                return JSON.stringify({
+                    status:403,
+                    message:"Missing token"
+                })
+            }
+            if(!authorize(data.requestBody.token)){
+                return JSON.stringify({
+                    status:403,
+                    message:"Unauthorized"
+                })
+            }
+            return balancer.request(data.requestBody)
+        break;
+        default:
+            return JSON.stringify({
+                status:403,
+                message:"Invalid request type"
+            })
+        break;
+     }
 }
 let server = Bun.serve({
     port: 8080,
@@ -43,6 +78,7 @@ let server = Bun.serve({
                     }))
                     return
                 }
+                ws.send(handleRequests(d))
                 break;
             case "authorize":
                 if(!d.payload.userId){
@@ -58,14 +94,20 @@ let server = Bun.serve({
                     token:new gateway().sign(d.payload.userId)
                 }))
                 break;
+           
+            case "request":
+                if(!d.requestBody){
+                    ws.send(JSON.stringify({
+                        status:403,
+                        message:"Missing requestBody"
+                    }))
+                    return
+                }
+                ws.send(handleRequests(d))
+                break;
          }
         
-         authorize(d.token) ? 
-         ws.send(handleRequests(d))
-         : ws.send(JSON.stringify({
-                status:403,
-                message:"Unauthorized"
-            }))
+       
         },
      },
 })
@@ -89,7 +131,22 @@ ws.onmessage = (e)=>{
    }
    if(data.clientData){
        console.log("Client data: ", data.clientData)
+       ws.send(JSON.stringify({
+              type:"request",
+              requestBody:{
+                token:data.clientData.token,
+                body:{
+                    collection:"users",
+                    type:"getList",
+                    from:0,
+                    to:10,
+                    expand: ["posts"],
+                    
+                }
+              }
+         }))
    }
+   console.log(data)
 
 }
 
