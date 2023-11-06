@@ -17,8 +17,8 @@ interface Request {
     type: string;
     body: any;
     expand?: string[];
-    from?: number;
-    to?: number;
+    page?: number;
+    count?: number;
 }
 
 class Hapta {
@@ -105,14 +105,31 @@ class Hapta {
             ? console.log("Dropped: ", this.droppedClients.length)
             : null;
 
-        this.waitingRequests.forEach((client) => {
-            client.durration = Date.now() - client.time;
-            if (client.durration > this.timeout || !client.isOnline) {
+        this.waitingRequests.forEach((r) => {
+            r.durration = Date.now() - r.time;
+            if (
+                r.durration > this.timeout 
+                || !this.clients.find((client) => client.token == r.token) 
+                 && r.status == "pending"
+                ) {
                 this.should_log
-                    ? console.log(`${client.token}  request has been dropped`)
+                    ? console.log(`${r.token}  request has been dropped`)
                     : null;
-                this.waitingRequests = this.waitingRequests.filter((c) => c.token != client.token)
-
+                this.waitingRequests = this.waitingRequests.filter((c) => c.token != r.token);
+            } else if (
+                this.requests.filter((request) => request.token === r.token).length < 5
+                && r.status == "pending"
+            ) {
+                this.requests.push(r);
+                this.waitingRequests = this.waitingRequests.filter((c) => c.token != r.token);
+                this.should_log
+                    ? console.log(`${r.token}:  request has been added to requests list`)
+                    : null;
+            } else {
+                this.should_log
+                    ? console.log(`${r.token}  request has been completed`)
+                    : null;
+                this.waitingRequests = this.waitingRequests.filter((c) => c.token != r.token);
             }
         });
     }
@@ -138,23 +155,94 @@ class Hapta {
         }
     }
 
-    handleRequests() {
+    private validateRequest(request: Request) {
+        if(!request.token
+        || !this.authorize(request.token).status    
+        ){
+            console.log("Invalid token")
+            return JSON.stringify({ wsType: 'request', status: false, message: "Invalid token" });
+        }
+        if (!request.body) {
+            console.log("Request body is missing")
+            return JSON.stringify({ wsType: 'request', status: false, message: "Request body is missing" });
+        }
+
+        else if (!request.body.collection) {
+            console.log("Request body is missing collection")
+            return JSON.stringify({ wsType: 'request', status: false, message: "Request body is missing collection" });
+        }
+        else if (request.type == "getList" && !request.page || request.type == "getList" && !request.count){
+            console.log("Request body is missing  page or count")
+            return JSON.stringify({ wsType: 'request', status: false, message: "Request body is missing page or count" });
+        }
+
+
+        return JSON.stringify({ wsType: 'request', status: true, message: "Request is valid" });
+        
+    }
+
+   
+   private async fileRequest(request: Request) {
+        let { token, body } = request;
+        let { collection, type, page, count, expand, filter, sort } = body;
+        switch (type) {
+            case "getList":
+                try {
+                let data = await this.pocketbase.collection(collection)
+                    .getList(page, count, {
+                        expand: expand || [],
+                        filter: filter || ``,
+                        sort: sort || ``,
+                    })
+                
+                this.requests = this.requests.filter((request) => request.token !== request.token);
+                return JSON.stringify({ wsType: 'request', status: true, message: data });
+                } catch (error) {
+                    return JSON.stringify({ wsType: 'request', status: false, message: error });
+                }
+                break;
+            default:
+                break;
+
+        }
+   }
+   private handleRequests() {
+        let req = ""
         if (!this.pocketbase) {
             throw new Error("No pocketbase instance provided");
         }
-        this.requests.forEach((request, index) => {
-            if (!request.body) {
-                console.log("Request body is missing")
-                return JSON.stringify({ wsType: 'request', status: false, message: "Request body is missing" });
+        let dup =  this.requests.filter((request) => request.token === request.token);
+        if (dup.length > 1) {
+            this.requests = this.requests.filter((request) => request.token !== request.token);
+            this.should_log
+                ? console.log(`Duplicated requests from ${request.token} has been removed`)
+                : null;
+        }
+        this.requests.forEach(async (request, index) => {
+            
+            let req = JSON.parse( this.validateRequest(request))
+            if(req.status == false){
+                return  req
+            }else{
+                 let { status, message } =  req
+                 let { token, body } = request
+                 let {collection, type, page, count, expand, filter, sort} = body
+                
+                 let output = this.fileRequest(request)
+                 console.log(await output)
             }
+            
         });
+        return req
     }
 
     request(data) {
         if (
-            this.requests.filter((request) => request.token === data.token).length >= 5 &&
-            !this.waitingRequests.find((client) => client.token === data.token)
+            this.requests.filter((request) => request.token === data.token).length >= 5  
         ) {
+            if(this.waitingRequests.filter((request) => request.token === data.token).length >= 5){
+                return JSON.stringify({ wsType: 'request', status: false, message: "RateLimited Too many requests" });
+            }
             this.waitingRequests.push({
                 token: data.token,
                 time: Date.now(),
@@ -200,7 +288,7 @@ class Hapta {
                     message: "Invalid token",
                 })
                 : null;
-            return { status: "Rejected", message: "Invalid token" };
+            return JSON.stringify({ status: "Rejected", message: "Invalid token" })
         }
 
         if (

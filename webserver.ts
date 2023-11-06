@@ -138,9 +138,9 @@ ws.onmessage = (e)=>{
                 body:{
                     collection:"users",
                     type:"getList",
-                    from:0,
-                    to:10,
-                    expand: ["posts"],
+                    page:0,
+                    count:10,
+                    expand: ["followers"],
                     
                 }
               }
