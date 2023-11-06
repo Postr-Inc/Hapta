@@ -1,5 +1,5 @@
 import Hapta from "."
-import gateway from "./authorization/authorizer"
+import gateway from "./auth/."
 import Pocketbase from 'pocketbase'
 const balancer = new Hapta({
     maxRoomSize:10,
