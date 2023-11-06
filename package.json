@@ -1,7 +1,7 @@
 {
   "name": "hapta",
   "description": "A simple fast - backend for pocketbase streamlined data",
-  "module": "index.ts", 
+  "module": "index.ts",
   "scripts": {
     "dev": "bun run index.ts",
     "auth": "cd authorization && bun run authorizer.ts"
@@ -13,10 +13,10 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "pocketbase": "^0.19.0"
   },
   "version": "1.0.0",
- 
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Postr-Inc/hapta.git"

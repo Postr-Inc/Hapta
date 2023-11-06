@@ -11,6 +11,8 @@ class Hapta{
     authorize:any;
     should_log:boolean;
     timeout:number; 
+    requests:Array<any>;
+    pocketbase: any;
  
    
     constructor(config:any = {}){
@@ -23,6 +25,8 @@ class Hapta{
         this.droppedClients = []
         this.should_log = config.should_log || false
         this.timeout = config.timeout || 10000
+        this.requests = []
+        this.pocketbase = config.pocketbase || null
        
         this.authorize = new gateway().authorize
         let info  = "\x1b[36m%s\x1b[0m"
@@ -58,6 +62,22 @@ class Hapta{
     }
 
 
+    handleRequests(data:any){
+        if(!this.pocketbase){
+            throw new Error("No pocketbase instance provided")
+        }
+    }  
+
+    request(data:any){
+        if(this.requests.find(req=>req.token == data.token)){
+             return JSON.stringify({status:false, message:"There is already a request being processed"})
+        }else if(!this.authorize(data.token).status){
+            return JSON.stringify({status:false, message:"Invalid token"})
+        }
+        
+
+    }
+
     connect(clientTOken:string){
          if(!this.authorize(clientTOken).status){
             this.should_log ? console.log({
@@ -86,6 +106,10 @@ class Hapta{
             return false;
          }
         
+         if(this.clients.find(client=>client.token == clientTOken)){
+            this.should_log ? console.log("Client ", clientTOken, " is already connected") : null
+            return JSON.stringify({status:true, message:"Client already connected", clientData:this.clients.find(client=>client.token == clientTOken)})
+         }
          this.clients.push({
             token:clientTOken,
             time:Date.now(),
@@ -94,7 +118,7 @@ class Hapta{
             isOnline:true
          })
          this.should_log ? console.log("Client ", clientTOken, " has been connected") : null
-         return {status:true, message:"Client connected", clientData:this.clients.find(client=>client.token == clientTOken)}
+         return JSON.stringify({status:true, message:"Client connected", clientData:this.clients.find(client=>client.token == clientTOken)})
     }
     qeue(){
        

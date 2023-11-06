@@ -1,19 +1,21 @@
-import Hapta from "./hapta"
-import gateway from "./hapta/authorization/authorizer"
-
-console.log("Starting Hapta Webserver")
+import Hapta from "."
+import gateway from "./authorization/authorizer"
+import Pocketbase from 'pocketbase'
 const balancer = new Hapta({
     maxRoomSize:10,
     maxConnections:1000,
     should_log:false,
-    timeout:10000
+    timeout:10000,
+    pocketbase: new Pocketbase(`https://postr.pockethost.io`),
 })
 
 function authorize(token){
     return balancer.authorize(token).status
 }
 function handleRequests(data){
-    
+    if(data.type == "connect"){
+       return balancer.connect(data.token)
+    }
 }
 let server = Bun.serve({
     port: 8080,
@@ -58,7 +60,9 @@ let server = Bun.serve({
                 break;
          }
         
-         authorize(d.token) ? handleRequests(d) : ws.send(JSON.stringify({
+         authorize(d.token) ? 
+         ws.send(handleRequests(d))
+         : ws.send(JSON.stringify({
                 status:403,
                 message:"Unauthorized"
             }))
@@ -70,16 +74,32 @@ console.log("Hapta Webserver started")
 
 let ws = new WebSocket("ws://localhost:8080")
 ws.onmessage = (e)=>{
-    console.log(e.data)
+   let data = e.data.toString()
+   data = JSON.parse(data)
+   if(data.status == 200){
+       console.log("Authorized")
+       ws.send(JSON.stringify({
+           type:"connect",
+           token:data.token
+       }))
+   }
+  
+   if(data.status == 403){
+       console.log("Unauthorized")
+   }
+   if(data.clientData){
+       console.log("Client data: ", data.clientData)
+   }
+
 }
 
 ws.onopen = ()=>{
     console.log("Connected")
-   let res = ws.send(JSON.stringify({
+     ws.send(JSON.stringify({
         type:"authorize",
         payload:{
              userId: Math.random().toString(36).substring(7),
         }
     }))
-    console.log(res)
+ 
 }
