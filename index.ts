@@ -3,15 +3,25 @@ import crypto from "crypto";
 interface Client {
   token: string;
   time: number;
+<<<<<<< HEAD
   status: any;
   durration: number;
   isOnline: boolean;
   id:string
+=======
+  status: "connected" | "waiting";
+  durration: number;
+  isOnline: boolean;
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
 }
 
 interface Request {
   token: string;
   time: number;
+<<<<<<< HEAD
+=======
+  status: string;
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
   durration: number;
   isOnline: boolean;
   type: string;
@@ -20,7 +30,10 @@ interface Request {
   page?: number;
   count?: number;
   id: Number;
+<<<<<<< HEAD
   from: number;
+=======
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
 }
 
 interface WaitingRequest {
@@ -37,12 +50,19 @@ class Hapta {
   private maxRoomSize: number;
   private maxConnections: number;
   private droppedClients: number = 0;
+<<<<<<< HEAD
   private waitingRequests: WaitingRequest[] = [];
   private should_log: boolean;
   private timeout: number;
   private requests: Request[] = [];
   private active_pings: any[];
   private ratelimited: any[];
+=======
+  private waitingRequests: Request[] = [];
+  private should_log: boolean;
+  private timeout: number;
+  private requests: Request[] = [];
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
   private pocketbase: any;
   private authorize: (token: string) => { status: boolean };
 
@@ -53,9 +73,12 @@ class Hapta {
     this.timeout = config.timeout || 10000;
     this.pocketbase = config.pocketbase || null;
     this.authorize = new gateway().authorize;
+<<<<<<< HEAD
     this.active_pings = [];
     this.ratelimited = [];
     this.pocketbase ? this.pocketbase.autoCancellation(false) : null;
+=======
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
 
     if (Object.keys(config).length === 0) {
       console.log(
@@ -89,12 +112,16 @@ class Hapta {
           ? console.log(`${client.token} has been disconnected`)
           : null;
         this.waiting.push(client);
+<<<<<<< HEAD
 
+=======
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
         this.qeue();
         return false;
       }
       return true;
     });
+<<<<<<< HEAD
 
     this.should_log ? console.log("Clients: ", this.clients.length) : null;
   }
@@ -112,6 +139,12 @@ class Hapta {
     }
   }
 
+=======
+
+    this.should_log ? console.log("Clients: ", this.clients.length) : null;
+  }
+
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
   private handleWaitingClients() {
     this.waiting = this.waiting.filter((client) => {
       client.durration = Date.now() - client.time;
@@ -120,11 +153,19 @@ class Hapta {
         (!client.isOnline && this.clients.includes(client))
       ) {
         this.should_log
+<<<<<<< HEAD
           ? console.log(`Client: ${client.id} has been dropped`)
           : null;
 
         this.clients = this.clients.filter((i) => i.token !== client.token);
         this.droppedClients+=1
+=======
+          ? console.log(`${client.token} has been dropped`)
+          : null;
+
+        this.clients = this.clients.filter((i) => i.token !== client.token);
+        this.droppedClients++;
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
 
         return false;
       }
@@ -132,8 +173,11 @@ class Hapta {
     });
 
     this.should_log ? console.log("Dropped: ", this.droppedClients) : null;
+<<<<<<< HEAD
     this.should_log  ? console.log("Qeued requests: " + this.waitingRequests.length) : null;
     this.should_log ? console.log("Requests: " + this.requests.length) : null;
+=======
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
   }
 
   private handleWaitingRequests() {
@@ -154,7 +198,10 @@ class Hapta {
           5 &&
         r.status == "pending"
       ) {
+<<<<<<< HEAD
         console.log(r)
+=======
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
         this.requests.push(r);
         this.waitingRequests = this.waitingRequests.filter((c) => c.id != r.id);
         this.should_log
@@ -165,8 +212,11 @@ class Hapta {
           ? console.log(`Request ->  ${r.id}    has been completed`)
           : null;
         this.waitingRequests = this.waitingRequests.filter((c) => c.id != r.id);
+<<<<<<< HEAD
         
        
+=======
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
       }
     });
   }
@@ -188,6 +238,7 @@ class Hapta {
             ? console.log(
                 `Client ${client.token} has been added to clients list`,
               )
+<<<<<<< HEAD
             : null;
         }
       });
@@ -285,10 +336,100 @@ class Hapta {
   }
   private async handleRequests(req) {
     let r;
+=======
+            : null;
+        }
+      });
+    }
+  }
+
+  private validateRequest(request: Request) {
+    if (!request.token || !this.authorize(request.token).status) {
+      console.log("Invalid token");
+      return JSON.stringify({
+        wsType: "request",
+        status: false,
+        message: "Invalid token",
+      });
+    }
+    if (!request.body) {
+      console.log("Request body is missing");
+      return JSON.stringify({
+        wsType: "request",
+        status: false,
+        message: "Request body is missing",
+      });
+    } else if (!request.body.collection) {
+      console.log("Request body is missing collection");
+      return JSON.stringify({
+        wsType: "request",
+        status: false,
+        message: "Request body is missing collection",
+      });
+    } else if (
+      (request.type == "getList" && !request.page) ||
+      (request.type == "getList" && !request.count)
+    ) {
+      console.log("Request body is missing  page or count");
+      return JSON.stringify({
+        wsType: "request",
+        status: false,
+        message: "Request body is missing page or count",
+      });
+    }
+
+    return JSON.stringify({
+      wsType: "request",
+      status: true,
+      message: "Request is valid",
+    });
+  }
+
+  private async fileRequest(request: Request) {
+    let { token, body, id } = request;
+    let { collection, type, page, count, expand, filter, sort } = body;
+    switch (type) {
+      case "getList":
+        try {
+          let data = await this.pocketbase
+            .collection(collection)
+            .getList(page, count, {
+              expand: expand || [],
+              filter: filter || ``,
+              sort: sort || ``,
+            });
+
+          this.requests = this.requests.filter(
+            (request) => request.id !== request.id,
+          );
+          this.should_log
+            ? console.log(request.id + " Has been completed")
+            : null;
+          return {
+            wsType: "request",
+            status: true,
+            data: data,
+          };
+        } catch (error) {
+          return JSON.stringify({
+            wsType: "request",
+            status: false,
+            message: error,
+          });
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  private handleRequests() {
+    let r = null;
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
     if (!this.pocketbase) {
       throw new Error("No pocketbase instance provided");
     }
 
+<<<<<<< HEAD
 
  
 
@@ -349,6 +490,96 @@ class Hapta {
 
     
      
+=======
+    this.requests.forEach((r) => {
+      let data = r?.body;
+      if (
+        this.requests.filter((req) => req.token == r.token && req.body == data)
+      ) {
+        this.requests = [...new Set(this.requests)];
+        this.should_log ? console.log(`Removed duplicate request's`) : null;
+      }
+    });
+
+    this.requests.forEach(async (request, index) => {
+      let req = JSON.parse(this.validateRequest(request));
+      if (req.status == false) {
+        return req;
+      } else {
+        let { status, message } = req;
+
+        r = this.fileRequest(request);
+      }
+    });
+    return r;
+  }
+
+  async request(data) {
+    if (
+      this.requests.filter((request) => request.token === data.token).length >=
+      5
+    ) {
+      if (
+        this.waitingRequests.filter((request) => request.token === data.token)
+          .length >= 5 &&
+        this.clients.find((client) => client.token == data.token)?.isOnline
+      ) {
+        return JSON.stringify({
+          wsType: "request",
+          status: false,
+          message: "RateLimited Too many requests",
+        });
+      }
+
+      let request = {
+        token: data.token,
+        time: Date.now(),
+        status: "pending",
+        durration: 0,
+        isOnline: true,
+        type: data.type,
+        body: data.body,
+        id: crypto.randomUUID(),
+      };
+      this.waitingRequests.push(request);
+      if (this.should_log) {
+        console.log(
+          `Request from ${request.id} has been added to waiting requests list`,
+        );
+      }
+      return JSON.stringify({
+        wsType: "request",
+        status: false,
+        message: "Request added to waiting list",
+      });
+    } else {
+      if (this.should_log) {
+        console.log(
+          `Request from ${data.token} has been added to requests list`,
+        );
+      }
+      this.requests.push({
+        token: data.token,
+        time: Date.now(),
+        status: "pending",
+        durration: 0,
+        isOnline: true,
+        type: data.type,
+        body: data.body,
+        expand: data.expand || [],
+        from: data.from || 0,
+        to: data.to || 10,
+        id: crypto.randomUUID(),
+      });
+
+      let d = await this.handleRequests();
+      return JSON.stringify({
+        wsType: "request",
+        status: true,
+        data: d,
+      });
+    }
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
   }
 
   connect(clientToken: string) {
@@ -374,7 +605,10 @@ class Hapta {
         status: "waiting",
         durration: 0,
         isOnline: true,
+<<<<<<< HEAD
         id: crypto.randomUUID(),
+=======
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
       });
       return false;
     }
@@ -386,7 +620,15 @@ class Hapta {
       waitingClient &&
       waitingClient.status == "waiting" &&
       waitingClient.time < Date.now()
+<<<<<<< HEAD
     ) {connect
+=======
+    ) {
+      let duration = Date.now() - waitingClient.time;
+      this.should_log
+        ? console.log(`Still in waiting list... time: ${duration}`)
+        : null;
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
       return false;
     }
 
@@ -401,14 +643,18 @@ class Hapta {
       });
     }
 
+<<<<<<< HEAD
 
     let id = crypto.randomUUID()
+=======
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
     this.clients.push({
       token: clientToken,
       time: Date.now(),
       status: "connected",
       durration: 0,
       isOnline: true,
+<<<<<<< HEAD
       id: id,
     });
     this.should_log
@@ -466,6 +712,18 @@ class Hapta {
        
     return JSON.stringify({ status: true, message: "Client pinged" });
   }
+=======
+    });
+    this.should_log
+      ? console.log(`Client ${clientToken} has been connected`)
+      : null;
+    return JSON.stringify({
+      status: true,
+      message: "Client connected",
+      clientData: this.clients.find((client) => client.token == clientToken),
+    });
+  }
+>>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
 }
 
 export default Hapta;
