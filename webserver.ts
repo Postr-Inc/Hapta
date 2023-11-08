@@ -9,63 +9,21 @@ const balancer = new Hapta({
   pocketbase: new Pocketbase(`https://postrapi.pockethost.io`),
 });
 
-function authorize(token) {
-  return balancer.authorize(token).status;
-}
-<<<<<<< HEAD
 function getSession(){
   return balancer.getSession()
 }
  function handleRequests(data) {
   switch (data.type) {
     case "connect":
-      if (!data.token) {
-        console.log("Unauthorized");
-=======
-function handleRequests(data) {
-  switch (data.type) {
-    case "connect":
-      if (!data.token) {
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
-        return JSON.stringify({
-          status: 403,
-          message: "Unauthorized",
-        });
-      }
-<<<<<<< HEAD
       return  balancer.connect(data.token)
       
-=======
-      return balancer.connect(data.token);
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
 
     case "request":
-      if (!data.requestBody) {
-        return JSON.stringify({
-          status: 403,
-          message: "Missing requestBody",
-        });
-      }
-      if (!data.requestBody.token) {
-        return JSON.stringify({
-          status: 403,
-          message: "Missing token",
-        });
-      }
-      if (!authorize(data.requestBody.token)) {
-        return JSON.stringify({
-          status: 403,
-          message: "Unauthorized",
-        });
-<<<<<<< HEAD
-      };
+       
+      
       return balancer.request(data.requestBody)
        
       
-=======
-      }
-      return balancer.request(data.requestBody);
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
       break;
     default:
       return JSON.stringify({
@@ -99,10 +57,7 @@ let server = Bun.serve({
             ws.send(
               JSON.stringify({
                 status: 403,
-<<<<<<< HEAD
                 type: "connect",
-=======
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
                 message: "Unauthorized",
               }),
             );
@@ -124,10 +79,7 @@ let server = Bun.serve({
             JSON.stringify({
               status: 200,
               message: "Success",
-<<<<<<< HEAD
               type: "authorize",
-=======
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
               token: new gateway().sign(d.payload.userId),
             }),
           );
@@ -144,7 +96,6 @@ let server = Bun.serve({
             return;
           }
 
-<<<<<<< HEAD
           if (!d.requestBody.token) {
             ws.send(
               JSON.stringify({
@@ -155,45 +106,26 @@ let server = Bun.serve({
             return;
           }
 
-          if (!authorize(d.requestBody.token)) {
-            ws.send(
-              JSON.stringify({
-                status: 403,
-                message: "Unauthorized",
-              }),
-            );
-            return;
-          }
+         
 
            
 
          ws.send(await handleRequests(d))
         
-=======
-          ws.send(await handleRequests(d));
-          break;
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
       }
     },
   },
 });
 console.log("Hapta Webserver started");
 
-let ws = new WebSocket("ws://localhost:8080");
+export let ws = new WebSocket("ws://localhost:8080");
 ws.onmessage = async (e) => {
-<<<<<<< HEAD
   let data = JSON.parse(e.data.toString());
  
 
   if (data.status == 200 
     && data.type == "authorize"
     ) {
-=======
-  let data = e.data.toString();
-
-  data = JSON.parse(data);
-  if (data.status == 200) {
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
     console.log("Authorized");
     ws.send(
       JSON.stringify({
@@ -203,7 +135,6 @@ ws.onmessage = async (e) => {
     );
   }
 
-<<<<<<< HEAD
  
  
     if(data.wsType == "request" && data.status == 200 && data.data){
@@ -214,28 +145,11 @@ ws.onmessage = async (e) => {
     let client = data.clientData
    
     setInterval(() => {
-=======
-  if (data.status == 403) {
-    console.log("Unauthorized");
-  }
-  if (data.clientData) {
-    console.log("Client data: ", data.clientData);
-    let count = 0;
-    setInterval(() => {
-      if (count > 10) {
-        return;
-      }
-      count++;
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
       ws.send(
         JSON.stringify({
           type: "request",
           requestBody: {
-<<<<<<< HEAD
             token: client.token,
-=======
-            token: data.clientData.token,
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
             body: {
               collection: "users",
               type: "getList",
@@ -247,12 +161,7 @@ ws.onmessage = async (e) => {
         }),
       );
     }, 1000);
-<<<<<<< HEAD
    }
-=======
-  }
-  console.log(data);
->>>>>>> 3732d7bba2cc6740c684bb7b42cdea122db89467
 };
 
 ws.onopen = () => {
