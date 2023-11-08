@@ -21,6 +21,7 @@ export default class gateway{
             }
             return {
                 status:true,
+                type:"authorize",
                 message:"Token is valid",
                 decoded:decoded
             }
