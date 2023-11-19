@@ -30,7 +30,7 @@ export class Requests {
   onMessage(data) {
     try {
       const parsedData = JSON.parse(data.toString());
-      const token = parsedData.data.token || parsedData.token;
+      const token = parsedData.token || parsedData.data.token;
       let methodrateLimit = this.rateLimitsList.has(parsedData.type) ? this.rateLimitsList.get(parsedData.type) : { RequestLimit: 10, Duration: 1000 * 60 * 60 * 24 * 7 }
       this.rateLimit = methodrateLimit.RequestLimit
       setTimeout(() => {
@@ -74,6 +74,9 @@ export class Requests {
         case 'list':
           CrudManager(this.pb, this.sendMessage, parsedData,'list');
           break;
+        case 'read':
+            CrudManager(this.pb, this.sendMessage, parsedData,'read');
+            break;
         default:
           break;
       }
@@ -107,7 +110,7 @@ export class Requests {
   clearExpiredLimits(usageType) {
    let rateLimit = this.rateLimitsList.get(usageType)
     this.rateLimits.forEach((tokenUsage, token) => {
-      if (Date.now() - tokenUsage.timestamp > rateLimit.Duration) {
+      if (Date.now() - tokenUsage.timestamp >= rateLimit.Duration) {
         this.rateLimits.delete(token);
       }
     });
