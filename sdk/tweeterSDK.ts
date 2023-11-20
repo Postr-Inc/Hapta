@@ -1,7 +1,7 @@
 /**
  * @file tweeterSDK.ts
  * @description tweeterSDK
- * @version v0.0.1
+ * @version v0.0.2
  * 
  */
 
@@ -12,8 +12,20 @@ interface event{
     disconnected: any
 }
 
+interface model{
+    id: string
+    avatar:string,
+    username: string,
+    created: string,
+    bio: string,
+    updated:string,
+    bookmarks: Array<string>,
+    followers: Array<string>,   
+    token: string
+}
+
 interface authStore{
-    model:  any
+    model: any
     onChange: Function
     update: Function
     clear: Function
@@ -50,8 +62,44 @@ export default class tweeterSDK{
         }
         this.changeEvent = new CustomEvent("authChange", {detail: {model: JSON.parse(localStorage.getItem("tweeter_auth") || "{}").model, token: JSON.parse(localStorage.getItem("tweeter_auth") || "{}").token}})
     }
+    /**
+     * @method upload
+     * @description convert file into readable format
+     * @param file 
+     * @returns 
+     */
+    public getRawFileData(file: File): Promise<Uint8Array> {
+        return new Promise<Uint8Array>((resolve, reject) => {
+          // Create a FileReader to read the file
+          let reader = new FileReader();
+      
+          // Set up event listeners for when the file reading is complete
+          reader.onload = () => {
+            // Resolve the Promise with the result (Uint8Array)
+            const arrayBuffer = reader.result as ArrayBuffer;
+            const uint8Array = new Uint8Array(arrayBuffer);
+            resolve(uint8Array);
+          };
+      
+          // Set up an event listener for errors during file reading
+          reader.onerror = (error) => {
+            // Reject the Promise with the error
+            reject(error);
+          };
+      
+          // Read the file as an ArrayBuffer
+          reader.readAsArrayBuffer(file);
+        });
+      }
+    
+    /**
+     * @method authStore
+     * @description Get the current authmodel data and listen for changes
+     * @returns {authStore}
+     * 
+     */
     public authStore: authStore = {
-        model:  JSON.parse(localStorage.getItem("tweeter_auth") || "{}").model || {},
+        model: JSON.parse(localStorage.getItem("tweeter_auth") || "{}").model,     
         onChange: (callback: Function) => {
             window.addEventListener("authChange", (e: Event) => {
                     const authChange  =  (e as CustomEvent).detail
@@ -77,9 +125,13 @@ export default class tweeterSDK{
         clear: () => {
             if(typeof window == "undefined") return;
             localStorage.removeItem("tweeter_auth")
-            this.authStore.model = {}
+            this.authStore.model = null
             window.dispatchEvent(this.changeEvent)
         },
+        /**
+         * @param {boolean} isValid
+         * @description check if token is expired
+         */
         isValid: isTokenExpired(JSON.parse((localStorage.getItem("tweeter_auth") || '{}')) ? JSON.parse((localStorage.getItem("tweeter_auth") || '{}')).token : null, 
         0)
         
@@ -150,6 +202,22 @@ export default class tweeterSDK{
             }
         }, maxWaitTime);
     }
+
+     public getAsByteArray(file: File): Promise<Uint8Array> {
+        return new Promise<Uint8Array>((resolve, reject) => {
+          let reader = new FileReader();
+            reader.onload = () => {
+                const arrayBuffer = reader.result as ArrayBuffer;
+                const uint8Array = new Uint8Array(arrayBuffer);
+                resolve(uint8Array);
+            };
+            reader.onerror = (error) => {
+                reject(error);
+            };
+            reader.readAsArrayBuffer(file);
+        });
+      }
+    
     
 
     public oauth(data: {provider: string, redirect_uri: string}){
@@ -220,6 +288,8 @@ export default class tweeterSDK{
                 if(data.error) reject(data);
                 resolve(data)
             })
+
+            
             
             this.sendMessage(JSON.stringify({type: "update", key: key, data: data.data, collection: data.collection, sort: data.sort, filter:data.filter,token: this.token, id:data.id}))
         })
