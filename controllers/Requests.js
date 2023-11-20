@@ -1,4 +1,5 @@
 import { tokenManager } from "../utils/jwt.js";
+import authWithPassword, { authUpdate } from "./AuthState.js";
 import CrudManager from "./Crud.js";
 import oauth2 from "./Oauth2.js";
 
@@ -27,7 +28,7 @@ export class Requests {
     };
   }
 
-  onMessage(data) {
+  async onMessage(data) {
     try {
       const parsedData = JSON.parse(data.toString());
       const token = parsedData.token || parsedData.data.token;
@@ -68,16 +69,13 @@ export class Requests {
             },
           });
           break;
-        case 'update':
-          CrudManager(this.pb, this.sendMessage, parsedData, 'update');
-          break;
-        case 'list':
-          CrudManager(this.pb, this.sendMessage, parsedData,'list');
-          break;
-        case 'read':
-            CrudManager(this.pb, this.sendMessage, parsedData,'read');
+        case 'auth&password':
+        this.sendMessage(await authWithPassword(this.pb, parsedData.data));
+        case 'authUpdate':
+            this.sendMessage(await authUpdate(this.pb, parsedData.data));
             break;
         default:
+            CrudManager(this.pb, this.sendMessage, parsedData, parsedData.type);
           break;
       }
 

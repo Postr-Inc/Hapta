@@ -1,19 +1,48 @@
 import { tokenManager } from "../utils/jwt.js";
 
-function create(pb, data) {
-    let { collection, record } = data
+async function create(pb, data) {
+    console.log(data)
+    let { collection, token} = data
+ 
+    switch (true) {
+        case !collection:
+            return { error: true, message: 'collection name is required', key: data.key };
+        case !data.data:
+            return { error: true, message: 'record data is required', key: data.key };
+        case !token:
+            return { error: true, message: 'client auth token is required', key: data.key };
+        default:
+            let form = new FormData();
+            Object.keys(data.data).forEach((key) => {
+                form.append(key, data.data[key])
+            })
+            try {
+                let res = await pb.admins.client.collection(collection).create(form)
+                return { error: false, key: data.key, data: res }
+            } catch (error) {
+                return { error: true, message: error.response, key: data.key }
+            }
+        
 
+    }
 }
 async function deleteItem(pb, data) {
-    if (!data.collection) return { error: true, message: 'collection name is required', key: data.key };
-    if (!data.token) return { error: true, message: 'client auth token is required', key: data.key };
-    try {
-        let idFromToken = tokenManager.decode(data.token).id
-        if (data.collection === 'users' && idFromToken !== data.id) return { error: true, message: 'You are not authorized to perform this action', key: data.key };
-        let res = await pb.admins.client.collection(data.collection).delete(data.id)
-        return { error: false, key: data.key, data: res }
-    } catch (error) {
-        return { error: true, message: error.message, key: data.key }
+    switch (true) {
+        case !data.collection:
+            return { error: true, message: 'collection name is required', key: data.key };
+        case !data.id:
+            return { error: true, message: 'record id is required', key: data.key };
+        case !data.token:
+            return { error: true, message: 'client auth token is required', key: data.key };
+        case data.collection === 'users' && tokenManager.decode(data.token).id !== data.id:
+            return { error: true, message: 'You are not authorized to perform this action', key: data.key };
+        default:
+            try {
+                await pb.admins.client.collection(data.collection).delete(data.id)
+                return { error: false, key: data.key, data: {message: 'success', code:200} }
+            } catch (error) {
+                return { error: true, message: error.message, key: data.key }
+            }
     }
 
 }
@@ -152,7 +181,7 @@ async function list(pb, data = {}) {
 
 
 }
-export default async function CrudManager(pb, sendMessage, data, method = { "create": "create", "read": "read", "update": "update", "delete": "delete" }) {
+export default async function CrudManager(pb, sendMessage, data, method = { "create": "create", "read": "read", "update": "update", "delete": "delete" }, rules) {
 
     try {
         await pb.admins.authWithPassword(process.env.EMAIL, process.env.PASSWORD)
