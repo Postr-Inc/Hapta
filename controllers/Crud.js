@@ -12,6 +12,14 @@ async function create(pb, data) {
         case !token:
             return { error: true, message: 'client auth token is required', key: data.key };
         default:
+            for(var i in data.data){
+                if(data.data[i].isFile){
+                    const uint8Array = new Uint8Array(data.data[i].data);
+                    const blob = new Blob([uint8Array], { type: data.data[i].type });
+                     data.data[i] = blob
+
+                }
+            }
             let form = new FormData();
             Object.keys(data.data).forEach((key) => {
                 form.append(key, data.data[key])
@@ -78,7 +86,7 @@ async function read(pb, data = {}) {
 
 }
 async function update(pb, data = {}, collectionModal = {}) {
-
+  
     switch (true) {
         case !data.data || Object.keys(data.data).length === 0:
             return { error: true, message: 'record data to swapout is required', key: data.key };
@@ -86,6 +94,8 @@ async function update(pb, data = {}, collectionModal = {}) {
             return { error: true, message: 'collection name is required', key: data.key };
         case !data.token:
             return { error: true, message: 'client auth token is required', key: data.key };
+
+        
 
         default:
             let idFromToken = tokenManager.decode(data.token).id;
@@ -103,9 +113,19 @@ async function update(pb, data = {}, collectionModal = {}) {
                 if (idFromToken == data.id && (field === 'followers' || field === 'validVerified' || field === 'email')) {
                     delete data.data[field];
                 }
-            }
+            }   
+                 
+            for(var i in data.data){
+                if(data.data[i].isFile){
+                    const uint8Array = new Uint8Array(data.data[i].data);
+                    const blob = new Blob([uint8Array], { type: data.data[i].type });
+                     data.data[i] = blob
 
+                }
+            }
             try {
+
+                
 
                 let res = await pb.admins.client.collection(data.collection).update(data.id, data.data, {
                     filter: data.filter || '',
@@ -182,7 +202,7 @@ async function list(pb, data = {}) {
 
 }
 export default async function CrudManager(pb, sendMessage, data, method = { "create": "create", "read": "read", "update": "update", "delete": "delete" }, rules) {
-
+   
     try {
         await pb.admins.authWithPassword(process.env.EMAIL, process.env.PASSWORD)
     } catch (error) {
