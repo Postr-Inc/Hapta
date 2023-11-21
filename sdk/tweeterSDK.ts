@@ -115,8 +115,10 @@ export default class tweeterSDK{
                     localStorage.setItem("tweeter_auth", JSON.stringify({model:data.clientData, token: data.clientData.token}))
                     this.authStore.model = data.clientData
                     window.dispatchEvent(this.changeEvent)
+                    this.callbacks.delete('authUpdate')
                 }else if (data.error){
                     throw new Error(data.error)
+                    this.callbacks.delete('authUpdate')
                 }
             })
             this.sendMessage(JSON.stringify({type: "authUpdate", data: {record: this.authStore.model, token: this.token,  key:'authUpdate'}}))
@@ -271,6 +273,7 @@ export default class tweeterSDK{
             this.callbacks.set(key, (data: any)=> {
                 if(data.error) reject(data);
                 resolve(data)
+                this.callbacks.delete(key)
             })
             
             this.sendMessage(JSON.stringify({type: "read", key: key, collection: data.collection, token: this.token, id:data.id, returnable: data.returnable}))
@@ -287,6 +290,7 @@ export default class tweeterSDK{
             this.callbacks.set(key, (data: any)=> {
                 if(data.error) reject(data);
                 resolve(data)
+                this.callbacks.delete(key)
             })
 
             
@@ -302,6 +306,7 @@ export default class tweeterSDK{
             this.callbacks.set(key, (data: any)=> {
                 if(data.error) reject(data);
                 resolve(data)
+                this.callbacks.delete(key)
             })
             
             this.sendMessage(JSON.stringify({type: "list", key: key, token:this.token,  data:{returnable:data.returnable, collection: data.collection, sort: data.sort, filter:data.filter, limit: data.limit, offset: data.offset, id:this.authStore.model?.id|| null}}))
@@ -315,6 +320,7 @@ export default class tweeterSDK{
             this.callbacks.set(key, (data: any)=> {
                 if(data.error) reject(data);
                 resolve(data)
+                this.callbacks.delete(key)
             })
             
             this.sendMessage(JSON.stringify({type: "delete", key: key, collection: data.collection, filter:data.filter,token: this.token, id:this.authStore.model?.id|| null}))
@@ -329,6 +335,7 @@ export default class tweeterSDK{
             this.callbacks.set(key, (data: any)=> {
                 if(data.error) reject(data.message);
                 resolve(data)
+                this.callbacks.delete(key)
             })
             
             this.sendMessage(JSON.stringify({type: "create", key: key, data: data.record, collection: data.collection,token: this.token, id: this.authStore.model?.id|| null}))
