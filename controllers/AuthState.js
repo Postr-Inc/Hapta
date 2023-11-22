@@ -1,11 +1,14 @@
-import { tokenManager } from "../utils/jwt.js"
+import {  TokenManager } from "../utils/jwt.js"
+ 
 
 export default async function authWithPassword(pb,  data){
+ 
    switch(true){
-    case !data.email:
+    case  !data['email']  && !data['username'] :
         return {
+            key: 'auth&password',
             error: true,
-            message: 'email is required'
+            message: 'email or username is required'
         }
     case !data.password:
         return {
@@ -14,15 +17,16 @@ export default async function authWithPassword(pb,  data){
         }
     default:
           
+   console.log(data)
     try {
-        let res = await pb.admins.client.collection('users').authWithPassword(data.email, data.password)
-      
-        res['token'] = tokenManager.sign(res.record.id)
+        let res = await pb.admins.client.collection('users').authWithPassword(data.email || data.username, data.password)
+        console.log(res)
+       
           
       return {type:'auth&password', key:'auth&password', clientData:res}
     } catch (error) {
         console.log(error)
-        return { error: true, message: error.message, key: data.key}
+        return { error: true, message: error.message, key:  "auth&password"}
     }
 
    }
@@ -41,7 +45,7 @@ export async function authUpdate(pb, data){
             message: 'auth record is required'
         }
     default:
-        let idFromToken = tokenManager.decode(data.token).id
+  
         if(idFromToken !== data.record.id){
             return {
                 error: true,
@@ -50,10 +54,8 @@ export async function authUpdate(pb, data){
         }
 
         try {
-            let newToken = tokenManager.sign(data.record.id)
-            let res = await pb.admins.client.collection('users').getOne(data.record.id)
-            res['token'] = newToken
-            return {error:false, key:data.key, clientData:res}
+             
+           
 
         } catch (error) {
             return {error: true, message: error.message, key: data.key}

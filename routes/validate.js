@@ -5,7 +5,7 @@ export default async function validate(req,res){
     let email = req.params.email
     let username = req.params.username
     if(!email || !username){
-      res.send({
+      res.json({
         error: true,
         message: 'email and username are required'
       })
@@ -32,7 +32,7 @@ export default async function validate(req,res){
     
   } catch (error) {
     
-     res.send({
+     res.json({
        error: true,
        message: error.message
      })

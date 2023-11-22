@@ -1,6 +1,7 @@
-import { tokenManager } from "../utils/jwt.js";
+import isNew from "../routes/isnew.js";
+import { TokenManager } from "../utils/jwt.js";
 import authWithPassword, { authUpdate } from "./AuthState.js";
-import CrudManager from "./Crud.js";
+import { CrudManager } from "./Crud.js";
 import oauth2 from "./Oauth2.js";
 
 export class Requests {
@@ -15,12 +16,14 @@ export class Requests {
     this.wss.on('connection', this.onConnection.bind(this));
     this.sendMessage = null;
     this.rateLimits = new Map(); // Map to store token usage and timestamps
-     
+    
+    this.tokenManager = new TokenManager(pb)
+    this.CrudManager = new CrudManager(pb, this.tokenManager)
   }
 
-  onConnection(ws) {
+  async onConnection(ws) {
      global.shouldLog ? console.log(`new connection, total: ${this.wss.clients.size}`) : null;
-
+     
     // Listen for the 'message' event for each connected client
     ws.on('message', (data) => this.onMessage(data));
     this.sendMessage = (data) => {
@@ -29,6 +32,7 @@ export class Requests {
   }
 
   async onMessage(data) {
+    await this.pb.admins.authWithPassword(process.env.EMAIL, process.env.PASSWORD)
     try {
       const parsedData = JSON.parse(data.toString());
       const token = parsedData.token || parsedData.data.token;
@@ -59,13 +63,13 @@ export class Requests {
 
       switch (parsedData.type) {
         case 'oauth':
-          oauth2(this.pb, this.sendMessage, parsedData.data);
+          oauth2(this.tokenManager, this.pb, this.sendMessage, parsedData.data);
           break;
         case 'isValid':
           this.sendMessage({
             type: 'authValid',
             data: {
-              isValid: tokenManager.isValid(token),
+              isValid: await this.tokenManager.verify(token),
             },
           });
           break;
@@ -74,8 +78,11 @@ export class Requests {
         case 'authUpdate':
             this.sendMessage(await authUpdate(this.pb, parsedData.data));
             break;
-        default:
-            CrudManager(this.pb, this.sendMessage, parsedData, parsedData.type);
+       
+        case 'isNew':
+          this.sendMessage(isNew(parsedData.data.id));
+        case 'list':
+          this.sendMessage(await this.CrudManager.list(parsedData));
           break;
       }
 

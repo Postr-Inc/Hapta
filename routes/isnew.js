@@ -1,5 +1,6 @@
 export default async function isNew(req, res){
  let result = await global.pb.admins.client.collection('users').getOne(req.params.id).then((res)=>{
+    console.log(res)
     let created = new Date(res.created)
     let now = new Date()
     let diff = now - created
