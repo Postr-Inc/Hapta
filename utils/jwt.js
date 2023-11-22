@@ -11,9 +11,9 @@ export class TokenManager{
     }
 
     startUp(){
-        this.pb.admins.client.collection('authState').getList(1, 1000).then((res) => {
-            res.items.forEach((item) => {
-                this.serverKeys.set(item.User, {key: item.signing_key, id: item.id})
+        this.pb.admins.client.collection('authState').getFullList().then((res)=>{
+            res.forEach((d)=>{
+                this.serverKeys.set(d.User, {key: d.signing_key, id: d.id})
             })
         })
     }
@@ -69,21 +69,14 @@ export class TokenManager{
         }
     }
 
-    async getToken(id){
-        try {
-            let res = await this.pb.admins.client.collection('authState').getList(1, 1, {filter: `User~"${id}"`})
-            return res.items[0].token || null
-        } catch (error) {
-            return null
-        }
-    }
+    
 
     async isValid(token){
          
         try {
             console.log(this.decode(token).id)
             let signingKey = await this.getSigningKey(this.decode(token).id)            
-          jwt.verify(token, signingKey.key)
+            jwt.verify(token, signingKey.key)
 
             return true
         } catch (error) {
