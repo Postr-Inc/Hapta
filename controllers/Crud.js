@@ -151,14 +151,14 @@ export class CrudManager {
                         expand: data.expand || [],
                     });
 
-                    console.log(res)
+                 
                     // Modify data based on specific conditions
                     if (data.collection === 'users' && idFromToken !== data.id && res.emailVisibility === false) {
                         delete res.email;
                     }
 
                     // Check for expand and returnable arrays
-                    if (data.expand && Array.isArray(data.expand) && (data.returnable && Array.isArray(data.returnable) || !data.returnable)) {
+                    if (data.expand && Array.isArray(data.expand) && (data.returnable && Array.isArray(data.returnable) || data.expand && !data.returnable)) {
                         let newRecord = {
                             id: res.id,
                             expand: {}
@@ -171,13 +171,16 @@ export class CrudManager {
                                     newRecord.expand[key] = res.expand[k][key];
 
                                     // Handle specific condition for 'emailVisibility'
+                                     
                                     if (
 
+                                       
                                         res.expand[k][key].email &&
                                         res.expand[k][key].emailVisibility === false
                                     ) {
+                                        console.log('deleting email');
                                         delete newRecord.expand[key].email;
-                                    }
+                                    } 
                                 }
                             });
                         }
@@ -190,7 +193,7 @@ export class CrudManager {
                             }
                         });
 
-                        console.log(newRecord)
+                        
 
                         return { error: false, key: data.key, data: newRecord };
                     } else {
