@@ -102,7 +102,7 @@ export class CrudManager {
                                     newRecord.expand[key2] = item.expand[key][key2];
                                 }
                                  key2 === 'email' && item.expand[key]['emailVisibility'] === false ? delete item.expand[key]['email'] : null
-                                 newRecord[key] = item.expand[key]
+                                 newRecord.expand[key2] = item.expand[key][key2]
                              })
                         });
                     }
@@ -111,9 +111,14 @@ export class CrudManager {
                         if (returnable && returnable.includes(key)) {
                             newRecord[key] = item[key];
                         }
+                        newRecord[key] = item[key];
                     });
+
+                    return newRecord;
                     
                 });
+
+                res.items = newItems;
 
                  
             }
