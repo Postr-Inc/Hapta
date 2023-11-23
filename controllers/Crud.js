@@ -48,40 +48,48 @@ export class CrudManager{
             case !await this.tokenManager.isValid(data.token):
                 return { error: true, message: 'Invalid token', key: data.key };
 
-            default:
-                let { collection, limit, offset, sort, filter } = data.data
-
-
-            try {
-
-                let res = await pb.admins.client.collection(collection).getList(offset, limit, {
-                    filter: filter || "",
-                    sort: sort || '',
-                    expand: data.data.expand || [],
-                })
-                 
-                switch (collection) {
-                    case 'users':
-                        res.items.forEach((item) => {
-                            item.emailVisibility === false ? delete item.email : null
-                            data.data.returnable ? Object.keys(item).forEach((key) => {
-                                if (data.data.returnable && !data.data.returnable.includes(key)) delete item[key]
-                            }) : null
-                        })
-                        break;
-                    default:
-                        res.items.forEach((index, item) => {
-                            if(data.data.returnable &&  !data.data.returnable.includes(item.key)){
-                                delete res.items[index]
-                                
-                            }
-                        })
-                        break;
-                }
-                return { error: false, data: res, key: data.key }
-            } catch (error) {
-                return { error: true, message: error.message, key: data.key }
-            }
+                default:
+                    let { collection, limit, offset, sort, filter } = data.data;
+        
+                    try {
+                        let res = await pb.admins.client.collection(collection).getList(offset, limit, {
+                            filter: filter || "",
+                            sort: sort || '',
+                            expand: data.data.expand || [],
+                        });
+        
+                        switch (collection) {
+                            case 'users':
+                                res.items.forEach((item) => {
+                                    if (item.emailVisibility === false) delete item.email;
+                                    if (data.data.returnable && Array.isArray(data.data.returnable)) {
+                                        const allowedProperties = new Set(data.data.returnable);
+                                        Object.keys(item).forEach((key) => {
+                                            if (!allowedProperties.has(key)) {
+                                                delete item[key];
+                                            }
+                                        });
+                                    }
+                                });
+                                break;
+                            default:
+                                res.items.forEach((item) => {
+                                    if (data.data.returnable && Array.isArray(data.data.returnable)) {
+                                        const allowedProperties = new Set(data.data.returnable);
+                                        Object.keys(item).forEach((key) => {
+                                            if (!allowedProperties.has(key)) {
+                                                delete item[key];
+                                            }
+                                        });
+                                    }
+                                });
+                                break;
+                        }
+        
+                        return { error: false, key: data.key, data: res };
+                    } catch (error) {
+                        return { error: true, message: error.message, key: data.key };
+                    }
              
         }
     }
