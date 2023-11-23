@@ -1,20 +1,20 @@
-export class CrudManager{
-    constructor(pb, tokenManager){
+export class CrudManager {
+    constructor(pb, tokenManager) {
         this.pb = pb
         this.tokenManager = tokenManager
     }
 
-    async create(data){
-         switch (true) {
+    async create(data) {
+        switch (true) {
             case data.collection === 'authState' || data.collection.includes('authState'):
-                return { error: true, message:null, key: data.key };
+                return { error: true, message: null, key: data.key };
             case !data.collection:
                 return { error: true, message: 'collection name is required', key: data.key };
             case !data.record:
                 return { error: true, message: 'record data is required', key: data.key };
-            case !data.token && data.collection !== 'users'  || !this.tokenManager.isValid(data.token):
+            case !data.token && data.collection !== 'users' || !this.tokenManager.isValid(data.token):
                 return { error: true, message: 'Invalid token', key: data.key };
-            
+
             default:
                 try {
                     let res = await this.pb.admins.client.collection(data.collection).create(data.record)
@@ -22,78 +22,115 @@ export class CrudManager{
                 } catch (error) {
                     return { error: true, message: error.message, key: data.key }
                 }
-         }
-    }
-    async list(data){
-         
-        switch (true) {
-            case data.data.collection === 'authState' || data.data.collection.includes('authState'):
-                return { error: true, message: null, key: data.key };
-            case !data.data.collection:
-                return { error: true, message: 'collection name is required', key: data.key };
-            case !data.token:
-                return { error: true, message: 'client auth token is required', key: data.key };
-            case data.data.limit && typeof data.data.limit !== 'number':
-                return { error: true, message: 'limit must be a number', key: data.key };
-            case data.data.offset && typeof data.data.offset !== 'number':
-                return { error: true, message: 'offset must be a number', key: data.key };
-            case data.data.filter && typeof data.data.filter !== 'string':
-                return { error: true, message: 'filter must be a string', key: data.key };
-            case data.data.sort && typeof data.data.sort !== 'string':
-                return { error: true, message: 'sort must be a string', key: data.key };
-            case data.data.expand && !Array.isArray(data.data.expand):
-                return { error: true, message: 'expand must be an array', key: data.key };
-            case data.data.returnable && !Array.isArray(data.data.returnable):
-                return { error: true, message: 'returnable must be an array', key: data.key };
-            case !await this.tokenManager.isValid(data.token):
-                return { error: true, message: 'Invalid token', key: data.key };
-
-                default:
-                    let { collection, limit, offset, sort, filter } = data.data;
-        
-                    try {
-                        let res = await pb.admins.client.collection(collection).getList(offset, limit, {
-                            filter: filter || "",
-                            sort: sort || '',
-                            expand: data.data.expand || [],
-                        });
-        
-                        switch (collection) {
-                            case 'users':
-                                res.items.forEach((item) => {
-                                    if (item.emailVisibility === false) delete item.email;
-                                    if (data.data.returnable && Array.isArray(data.data.returnable)) {
-                                        const allowedProperties = new Set(data.data.returnable);
-                                        Object.keys(item).forEach((key) => {
-                                            if (!allowedProperties.has(key)) {
-                                                delete item[key];
-                                            }
-                                        });
-                                    }
-                                });
-                                break;
-                            default:
-                                res.items.forEach((item) => {
-                                    if (data.data.returnable && Array.isArray(data.data.returnable)) {
-                                        const allowedProperties = new Set(data.data.returnable);
-                                        Object.keys(item).forEach((key) => {
-                                            if (!allowedProperties.has(key)) {
-                                                delete item[key];
-                                            }
-                                        });
-                                    }
-                                });
-                                break;
-                        }
-        
-                        return { error: false, key: data.key, data: res };
-                    } catch (error) {
-                        return { error: true, message: error.message, key: data.key };
-                    }
-             
         }
     }
-    async read(data){
+    async list(data) {
+        const { collection, limit, offset, sort, filter, expand, returnable } = data.data;
+
+        if (data.data.collection === 'authState' || data.data.collection.includes('authState')) {
+            return { error: true, message: null, key: data.key };
+        }
+
+        if (!data.data.collection) {
+            return { error: true, message: 'collection name is required', key: data.key };
+        }
+
+        if (!data.token) {
+            return { error: true, message: 'client auth token is required', key: data.key };
+        }
+
+        if (data.data.limit && typeof data.data.limit !== 'number') {
+            return { error: true, message: 'limit must be a number', key: data.key };
+        }
+
+        if (data.data.offset && typeof data.data.offset !== 'number') {
+            return { error: true, message: 'offset must be a number', key: data.key };
+        }
+
+        if (data.data.filter && typeof data.data.filter !== 'string') {
+            return { error: true, message: 'filter must be a string', key: data.key };
+        }
+
+        if (data.data.sort && typeof data.data.sort !== 'string') {
+            return { error: true, message: 'sort must be a string', key: data.key };
+        }
+
+        if (data.data.expand && !Array.isArray(data.data.expand)) {
+            return { error: true, message: 'expand must be an array', key: data.key };
+        }
+
+        if (data.data.returnable && !Array.isArray(data.data.returnable)) {
+            return { error: true, message: 'returnable must be an array', key: data.key };
+        }
+
+        if (!await this.tokenManager.isValid(data.token)) {
+            return { error: true, message: 'Invalid token', key: data.key };
+        }
+
+        try {
+            let res = await pb.admins.client.collection(collection).getList(offset, limit, {
+                filter: filter || "",
+                sort: sort || '',
+                expand: expand || [],
+            });
+
+            if (collection === 'users') {
+                res.items.forEach((item) => {
+                    if (item.emailVisibility === false) delete item.email;
+                    if (returnable && Array.isArray(returnable)) {
+                        const allowedProperties = new Set(returnable);
+                        Object.keys(item).forEach((key) => {
+                            if (!allowedProperties.has(key)) {
+                                delete item[key];
+                            }
+                        });
+                    }
+                });
+            } else {
+                let newItems = res.items.map((item) => {
+                    let newRecord = {
+                        id: item.id,
+                        expand: {}
+                    };
+
+                    if (expand && Array.isArray(expand) && (returnable && Array.isArray(returnable) || !returnable)) {
+                        for (let k in item.expand) {
+                            Object.keys(item.expand[k]).forEach((key) => {
+                                if (returnable.includes(key)) {
+                                    newRecord.expand[key] = item.expand[k][key];
+
+                                    if (item.expand[k][key].email &&
+                                        item.expand[k][key].emailVisibility === false
+                                    ) {
+                                        delete newRecord.expand[key].email;
+                                    }
+                                }
+                            });
+                        }
+
+                        Object.keys(item).forEach((key) => {
+                            if (returnable.includes(key)) {
+                                newRecord[key] = item[key];
+                            }
+                        });
+
+                        return newRecord;
+                    } else {
+                        // If no modifications are needed, return the original item
+                        return item;
+                    }
+                });
+
+                res.items = newItems;
+            }
+
+            return { error: false, key: data.key, data: res };
+        } catch (error) {
+            return { error: true, message: error.message, key: data.key };
+        }
+    }
+
+    async read(data) {
         switch (true) {
             case data.collection === 'authState' || data.collection.includes('authState'):
                 return { error: true, message: null, key: data.key };
@@ -109,20 +146,65 @@ export class CrudManager{
                 return { error: true, message: 'Invalid token', key: data.key };
             default:
                 let idFromToken = this.tokenManager.decode(data.token).id;
-            try {
-                let res = await this.pb.admins.client.collection(data.collection).getOne(data.id)
-                data.collection === 'users' && idFromToken !== data.id && res.emailVisibility === false ? delete res.email : null
-                Object.keys(res).forEach((key) => {
-                    if (data.returnable && !data.returnable.includes(key)) delete res[key]
-                })
-                return { error: false, key: data.key, data: res }
-            } catch (error) {
-                console.log(error)
-                return { error: true, message: error.message, key: data.key }
-            }
+                try {
+                    let res = await this.pb.admins.client.collection(data.collection).getOne(data.id, {
+                        expand: data.expand || [],
+                    });
+
+                    console.log(res)
+                    // Modify data based on specific conditions
+                    if (data.collection === 'users' && idFromToken !== data.id && res.emailVisibility === false) {
+                        delete res.email;
+                    }
+
+                    // Check for expand and returnable arrays
+                    if (data.expand && Array.isArray(data.expand) && (data.returnable && Array.isArray(data.returnable) || !data.returnable)) {
+                        let newRecord = {
+                            id: res.id,
+                            expand: {}
+                        };
+
+                        // Iterate over each key in res.expand
+                        for (let k in res.expand) {
+                            Object.keys(res.expand[k]).forEach((key) => {
+                                if (data.returnable.includes(key)) {
+                                    newRecord.expand[key] = res.expand[k][key];
+
+                                    // Handle specific condition for 'emailVisibility'
+                                    if (
+
+                                        res.expand[k][key].email &&
+                                        res.expand[k][key].emailVisibility === false
+                                    ) {
+                                        delete newRecord.expand[key].email;
+                                    }
+                                }
+                            });
+                        }
+
+                        // Iterate over each key in res
+                        Object.keys(res).forEach((key) => {
+                            // Only keep keys that are in the returnable array
+                            if (data.returnable.includes(key)) {
+                                newRecord[key] = res[key];
+                            }
+                        });
+
+                        console.log(newRecord)
+
+                        return { error: false, key: data.key, data: newRecord };
+                    } else {
+                        // If no modifications are needed, return the original item
+                        return { error: false, key: data.key, data: res };
+                    }
+                } catch (error) {
+                    console.log(error);
+                    return { error: true, message: error.message, key: data.key };
+                }
         }
     }
-    async delete(data){
+
+    async delete(data) {
         switch (true) {
             case data.collection === 'authState' || data.collection.includes('authState'):
                 return { error: true, message: null, key: data.key };
@@ -139,11 +221,10 @@ export class CrudManager{
             default:
                 try {
                     await this.pb.admins.client.collection(data.collection).delete(data.id)
-                    return { error: false, key: data.key, data: {message: 'success', code:200} }
+                    return { error: false, key: data.key, data: { message: 'success', code: 200 } }
                 } catch (error) {
                     return { error: true, message: error.message, key: data.key }
                 }
         }
     }
 }
- 
