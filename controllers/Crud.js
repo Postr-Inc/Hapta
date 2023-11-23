@@ -1,3 +1,5 @@
+import { it } from "node:test";
+
 export class CrudManager {
     constructor(pb, tokenManager) {
         this.pb = pb
@@ -93,36 +95,29 @@ export class CrudManager {
                         expand: {}
                     };
 
-                    if (expand && Array.isArray(expand) && (returnable && Array.isArray(returnable) || !returnable)) {
-                        for (let k in item.expand) {
-                            Object.keys(item.expand[k]).forEach((key) => {
-                                if (returnable.includes(key)) {
-                                    newRecord.expand[key] = item.expand[k][key];
-
-                                    if (item.expand[k][key].email &&
-                                        item.expand[k][key].emailVisibility === false
-                                    ) {
-                                        delete newRecord.expand[key].email;
-                                    }
+                    if(item.expand && Object.keys(item.expand).length > 0){
+                        Object.keys(item.expand).forEach((key) => {
+                             Object.keys(item.expand[key]).forEach((key2) => {
+                                if (returnable && returnable.includes(key2) && item.expand[key][key2]) {
+                                    newRecord.expand[key2] = item.expand[key][key2];
                                 }
-                            });
-                        }
-
-                        Object.keys(item).forEach((key) => {
-                            if (returnable.includes(key)) {
-                                newRecord[key] = item[key];
-                            }
+                                 key2 === 'email' && item.expand[key]['emailVisibility'] === false ? delete item.expand[key]['email'] : null
+                                 newRecord[key] = item.expand[key]
+                             })
                         });
-
-                        return newRecord;
-                    } else {
-                        // If no modifications are needed, return the original item
-                        return item;
                     }
+
+                    Object.keys(item).forEach((key) => {
+                        if (returnable && returnable.includes(key)) {
+                            newRecord[key] = item[key];
+                        }
+                    });
+                    
                 });
 
-                res.items = newItems;
+                 
             }
+            
 
             return { error: false, key: data.key, data: res };
         } catch (error) {
