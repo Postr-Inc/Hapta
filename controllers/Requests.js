@@ -81,6 +81,18 @@ export class Requests {
        
         case 'isNew':
           this.sendMessage(isNew(parsedData.data.id));
+        case 'create':
+          this.sendMessage(await this.CrudManager.create(parsedData));
+          break;
+        case 'update':
+          this.sendMessage(await this.CrudManager.update(parsedData));
+          break;
+        case 'delete':
+          this.sendMessage(await this.CrudManager.delete(parsedData));
+          break;
+        case 'read':
+          this.sendMessage(await this.CrudManager.read(parsedData));
+          break;
         case 'list':
           this.sendMessage(await this.CrudManager.list(parsedData));
           break;
