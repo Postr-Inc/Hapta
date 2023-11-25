@@ -76,7 +76,7 @@ export class Requests {
         case 'auth&password':
         this.sendMessage(await authWithPassword(this.pb, parsedData.data));
         case 'authUpdate':
-            this.sendMessage(await authUpdate(this.pb, parsedData.data));
+            this.sendMessage(await authUpdate(this.pb, parsedData.data, this.tokenManager));
             break;
        
         case 'isNew':
@@ -94,8 +94,19 @@ export class Requests {
           this.sendMessage(await this.CrudManager.read(parsedData));
           break;
         case 'list':
+        
           this.sendMessage(await this.CrudManager.list(parsedData));
           break;
+        case 'isRatelimited':
+          this.sendMessage({
+            type: 'isRatelimited',
+            key: 'isRatelimited',
+            data: {
+              isRateLimited: this.isRateLimited(token),
+            },
+          });
+          break;
+          
       }
 
       // Update token usage
