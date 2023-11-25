@@ -30,7 +30,8 @@ interface authStore {
     update: Function
     clear: Function
     isValid: boolean,
-    img: Function
+    img: Function,
+    isRatelimited: Function
 }
 
 /**
@@ -48,16 +49,18 @@ export default class tweeterSDK {
     declare localStorage: any
     token: string
     changeEvent: CustomEvent
-    constructor() {
+    pbUrl: string
+    constructor(wsUrl: string, pbUrl: string) {
         this.token = JSON.parse(localStorage.getItem("tweeter_auth") || "{}").token
         this.isStandalone = false
         typeof window == "undefined" ? this.type = "server" : this.type = "client"
-        this.ws = new WebSocket("ws://localhost:8080")
+        this.ws = new WebSocket(wsUrl)
         this.sendMessage = (e) => {
             this.waitForSocketConnection(() => {
                 this.ws.send(e)
             })
         }
+        this.pbUrl = pbUrl
 
         this.callbacks = new Map()
         this.ws.onmessage = (e) => this.onmessage(e);
@@ -129,7 +132,7 @@ export default class tweeterSDK {
 
         },
         img: () => {
-            return `https://bird-meet-rationally.ngrok-free.app/api/files/_pb_users_auth_/${this.authStore.model.id}/${this.authStore.model.avatar}`
+            return `${this.pbUrl}/api/files/_pb_users_auth_/${this.authStore.model.id}/${this.authStore.model.avatar}`
         },
         clear: () => {
             if (typeof window == "undefined") return;
@@ -142,7 +145,17 @@ export default class tweeterSDK {
          * @description check if token is expired
          */
         isValid: isTokenExpired(JSON.parse((localStorage.getItem("tweeter_auth") || '{}')) ? JSON.parse((localStorage.getItem("tweeter_auth") || '{}')).token : null,
-            0)
+            0),
+        isRatelimited: () => {
+            return new Promise((resolve, reject) => {
+                this.callbacks.set("isRatelimited", (data: any) => {
+                    if (data.error) reject(new Error(data.error))
+                    else resolve(data)
+                    this.callbacks.delete("isRatelimited")
+                })
+                this.sendMessage(JSON.stringify({ type: "isRatelimited", key: "isRatelimited", token: this.token }))
+            })
+        }
 
     }
 
@@ -318,11 +331,12 @@ export default class tweeterSDK {
      * @returns  {Promise<any>}
      * @description Update a record in a collection
      */
-    public update(data: { id: string, collection: string, filter?: string, data: Object, sort?: string }) {
+    public update(data: { id: string, collection: string, filter?: string, record: Object, sort?: string }) {
+        
         return new Promise((resolve, reject) => {
             let key = crypto.randomUUID()
             !data.collection ? (reject(new Error("collection is required"))) : null
-            !data.data ? (reject(new Error("data is required"))) : null
+            !data.record ? (reject(new Error("data is required"))) : null
             !this.authStore.isValid ? (reject(new Error("token is expired"))) : null
 
 
@@ -334,7 +348,7 @@ export default class tweeterSDK {
 
 
 
-            this.sendMessage(JSON.stringify({ type: "update", key: key, data: data.data, collection: data.collection, sort: data.sort, filter: data.filter, token: this.token, id: data.id }))
+            this.sendMessage(JSON.stringify({ type: "update", key: key, data: data.record, collection: data.collection, sort: data.sort, filter: data.filter, token: this.token, id: data.id }))
         })
     }
     /**
@@ -343,7 +357,7 @@ export default class tweeterSDK {
      * @returns  {Promise<any>}
      * @description List records from a collection
      */
-    public list(data: { collection: string, filter?: string, sort?: string, limit?: number, offset?: number, returnable?: Array<string>, expand: Array<string> }) {
+    public list(data: { collection: string, filter?: string, sort?: string, limit?: number, page?: number, returnable?: Array<string>, expand: Array<string> }) {
         return new Promise((resolve, reject) => {
             let key = crypto.randomUUID()
             !data.collection ? (reject(new Error("collection is required"))) : null
@@ -353,7 +367,7 @@ export default class tweeterSDK {
                 resolve(data)
             })
 
-            this.sendMessage(JSON.stringify({ type: "list", key: key, token: this.token, data: { returnable: data.returnable, collection: data.collection, sort: data.sort, filter: data.filter, limit: data.limit, offset: data.offset, id: this.authStore.model?.id || null, expand: data.expand } }))
+            this.sendMessage(JSON.stringify({ type: "list", key: key, token: this.token, data: { returnable: data.returnable || null, collection: data.collection, sort: data.sort, filter: data.filter, limit: data.limit, offset: data.page, id: this.authStore.model?.id || null, expand: data.expand || null } }))
         })
     }
     /**
@@ -398,6 +412,7 @@ export default class tweeterSDK {
             this.sendMessage(JSON.stringify({ method: "create", type: "create", key: key, data: data.record, collection: data.collection, token: this.token || null, id: this.authStore.model?.id || null }))
         })
     }
+
     public on(event: string, callback: Function) {
         if (!event) {
             throw new Error("event is required")
