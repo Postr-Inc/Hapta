@@ -230,4 +230,30 @@ export class CrudManager {
                 }
         }
     }
+
+    async update(data) {
+       
+        switch(true){
+            case data.collection === 'authState' || data.collection.includes('authState'):
+                return { error: true, message: null, key: data.key };
+            case !data.collection:
+                return { error: true, message: 'collection name is required', key: data.key };
+            case !data.id:
+                return { error: true, message: 'record id is required', key: data.key };
+            case !data.token:
+                return { error: true, message: 'client auth token is required', key: data.key };
+            case data.collection === 'users' && this.tokenManager.decode(data.token).id !== data.id:
+                return { error: true, message: 'You are not authorized to perform this action', key: data.key };
+            case !this.tokenManager.isValid(data.token):
+                return { error: true, message: 'Invalid token', key: data.key };
+            default:
+                try {
+                    
+                    let res = await this.pb.admins.client.collection(data.collection).update(data.id, data.data)
+                    return { error: false, key: data.key, data: res }
+                } catch (error) {
+                    return { error: true, message: error.message, key: data.key }
+                }
+        }
+    }
 }
