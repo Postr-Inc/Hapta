@@ -33,6 +33,10 @@ export class Requests {
     const token = parsedData.token || parsedData.data.token;
     const usageType = parsedData.type;
 
+   if(!token || this.tokenManager.isValid(token) === false)  {
+      this.sendMessage({error:true, message: 'invalid token' });
+      return;
+   }
     if (usageType !== 'isRatelimited' && usageType !== 'isValid'
   
     ) {
@@ -41,7 +45,7 @@ export class Requests {
       await this.processRequest(parsedData, token);
       this.updateTokenUsage(token, usageType);
     } else {
-      await this.processRequest(parsedData, token);
+       usageType === 'isRatelimited' ? this.sendMessage({ isRatelimited: this.isRateLimited(token), key: parsedData.key, Duration: this.Duration}) : this.sendMessage({ isValid: await this.tokenManager.isValid(token) });
     }
   }
 
@@ -60,8 +64,9 @@ export class Requests {
       const checkRateLimit = () => {
         if (!this.isRateLimited(token)) {
           resolve();
+          console.log(`Rate limit cleared for ${type} for ${this.tokenManager.decode(token).id}`);
         } else {
-          console.log(`Waiting for ${type} rate limit for ${token}`);
+          console.log(`Waiting for ${type} rate limit for ${this.tokenManager.decode(token).id}`)
           this.clearExpiredLimits(type, token);
           setTimeout(checkRateLimit, this.Duration);
         }
@@ -99,10 +104,10 @@ export class Requests {
           await this.CrudManager.read(parsedData.data, this.sendMessage);
           break;
         case 'update':
-          await this.CrudManager.update(parsedData.data, this.sendMessage);
+          this.sendMessage(await await this.CrudManager.update(parsedData))
           break;
         case 'delete':
-          await this.CrudManager.delete(parsedData.data, this.sendMessage);
+          this.sendMessage(await this.CrudManager.delete(parsedData))
           break;
         case 'isnew':
           await isNew(this.pb, parsedData.data, this.sendMessage);
