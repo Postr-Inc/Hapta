@@ -5,142 +5,156 @@ import { CrudManager } from "./Crud.js";
 import oauth2 from "./Oauth2.js";
 
 export class Requests {
-  constructor(wss, pb, rateLimitsList = new Map(), data =  {email: "", password: ""}) {
+  constructor(wss, pb, rateLimitsList = new Map(), data = { email: "", password: "" }) {
     this.wss = wss;
     this.pb = pb;
-    /**
-     * Rate limit for each token
-     * @type {Map<string, {count: number, timestamp: number}>}
-     */
-    this.rateLimitsList = rateLimitsList
+    this.rateLimitsList = rateLimitsList;
     this.wss.on('connection', this.onConnection.bind(this));
     this.sendMessage = null;
-    this.rateLimits = new Map(); // Map to store token usage and timestamps
-    
-    this.tokenManager = new TokenManager(pb)
-    this.CrudManager = new CrudManager(pb, this.tokenManager)
+    this.requestsQueue = [];
+    this.isProcessing = false;
+    this.rateLimits = new Map();
+    this.tokenManager = new TokenManager(pb);
+    this.CrudManager = new CrudManager(pb, this.tokenManager);
   }
 
   async onConnection(ws) {
-     global.shouldLog ? console.log(`new connection, total: ${this.wss.clients.size}`) : null;
-     
-    // Listen for the 'message' event for each connected client
     ws.on('message', (data) => this.onMessage(data));
     this.sendMessage = (data) => {
       ws.send(JSON.stringify(data));
     };
+
+    this.processQueue();
   }
 
   async onMessage(data) {
-    await this.pb.admins.authWithPassword(process.env.EMAIL, process.env.PASSWORD)
-    try {
-      const parsedData = JSON.parse(data.toString());
-      const token = parsedData.token || parsedData.data.token;
-      let methodrateLimit = this.rateLimitsList.has(parsedData.type) ? this.rateLimitsList.get(parsedData.type) : { RequestLimit: 10, Duration: 1000 * 60 * 60 * 24 * 7 }
-      this.rateLimit = methodrateLimit.RequestLimit
-      setTimeout(() => {
-        this.clearExpiredLimits(parsedData.type);
-      }, methodrateLimit.Duration);
+    await this.pb.admins.authWithPassword(process.env.EMAIL, process.env.PASSWORD);
+    const parsedData = JSON.parse(data);
+    const token = parsedData.token || parsedData.data.token;
+    const usageType = parsedData.type;
+
+    if (usageType !== 'isRatelimited' && usageType !== 'isValid'
   
-     
-     
-      
-      // Check rate limit
-      if (this.isRateLimited(token)) {
-        this.sendMessage({
-          type: 'rateLimitExceeded',
-          key:parsedData.key,
-          data: {
-            error: true,
-            errorType: 'rateLimitExceeded',
-            message: 'Rate limit exceeded. Please try again later.',
-            timeRemaining: Math.floor((this.rateLimits.get(token).timestamp + methodrateLimit.Duration - Date.now()) / 1000) + ' seconds'
-          },
-        });
-        global.shouldLog ? console.log(`Rate limit exceeded for method:${parsedData.type} with ${token}`) : null;
-        return;
-      }
-
-      switch (parsedData.type) {
-        case 'oauth':
-          oauth2(this.tokenManager, this.pb, this.sendMessage, parsedData.data);
-          break;
-        case 'isValid':
-          this.sendMessage({
-            type: 'authValid',
-            data: {
-              isValid: await this.tokenManager.verify(token),
-            },
-          });
-          break;
-        case 'auth&password':
-        this.sendMessage(await authWithPassword(this.pb, parsedData.data));
-        case 'authUpdate':
-            this.sendMessage(await authUpdate(this.pb, parsedData.data, this.tokenManager));
-            break;
-       
-        case 'isNew':
-          this.sendMessage(isNew(parsedData.data.id));
-        case 'create':
-          this.sendMessage(await this.CrudManager.create(parsedData));
-          break;
-        case 'update':
-          this.sendMessage(await this.CrudManager.update(parsedData));
-          break;
-        case 'delete':
-          this.sendMessage(await this.CrudManager.delete(parsedData));
-          break;
-        case 'read':
-          this.sendMessage(await this.CrudManager.read(parsedData));
-          break;
-        case 'list':
-        
-          this.sendMessage(await this.CrudManager.list(parsedData));
-          break;
-        case 'isRatelimited':
-          this.sendMessage({
-            type: 'isRatelimited',
-            key: 'isRatelimited',
-            data: {
-              isRateLimited: this.isRateLimited(token),
-            },
-          });
-          break;
-          
-      }
-
-      // Update token usage
-      this.updateTokenUsage(token);
-    } catch (error) {
-        this.sendMessage({
-            type: 'error',
-            data: {
-            error: true,
-            errorType: 'invalidRequest',
-            message: 'Invalid request',
-            },
-        });
-        global.shouldLog ? console.log(`Invalid request: ${error.message}`) : null;
+    ) {
+      this.initializeRateLimit(usageType);
+      await this.waitForRateLimit(token, usageType);
+      await this.processRequest(parsedData, token);
+      this.updateTokenUsage(token, usageType);
+    } else {
+      await this.processRequest(parsedData, token);
     }
   }
 
-  isRateLimited(token) {
-    const tokenUsage =  this.rateLimits.get(token) || { count: 0, timestamp: Date.now() };
-    return  tokenUsage.count >= this.rateLimit;
+  initializeRateLimit(type) {
+    if (!this.rateLimitsList.has(type)) {
+      this.rateLimitsList.set(type, { RequestLimit: 1, Duration: 1000 });
+    }
+
+    const { RequestLimit, Duration } = this.rateLimitsList.get(type);
+    this.rateLimit = RequestLimit;
+    this.Duration = Duration;
   }
 
-  updateTokenUsage(token) {
-    const tokenUsage = this.rateLimits.get(token) || { count: 0, timestamp: Date.now() };
-    tokenUsage.count += 1;
-    this.rateLimits.set(token, tokenUsage);
-  }
+  waitForRateLimit(token, type) {
+    return new Promise(resolve => {
+      const checkRateLimit = () => {
+        if (!this.isRateLimited(token)) {
+          resolve();
+        } else {
+          console.log(`Waiting for ${type} rate limit for ${token}`);
+          this.clearExpiredLimits(type, token);
+          setTimeout(checkRateLimit, this.Duration);
+        }
+      };
 
-  clearExpiredLimits(usageType) {
-   let rateLimit = this.rateLimitsList.get(usageType)
-    this.rateLimits.forEach((tokenUsage, token) => {
-      if (Date.now() - tokenUsage.timestamp >= rateLimit.Duration) {
-        this.rateLimits.delete(token);
-      }
+      checkRateLimit();
     });
+  }
+
+  async processRequest(parsedData, token) {
+    return new Promise(async (resolve) => {
+      switch (parsedData.type) {
+        case 'isRatelimited':
+           this.sendMessage({ isRatelimited: this.isRateLimited(token), key: parsedData.key, Duration: this.Duration});
+          break;
+        case 'isValid':
+          this.sendMessage({ isValid: await this.tokenManager.isValid(token) });
+          break;
+        case 'authWithPassword':
+          this.sendMessage(await authWithPassword(this.pb, parsedData.data));
+          break;
+        case 'authUpdate':
+          this.sendMessage(await authUpdate(this.pb, parsedData, this.sendMessage))
+          break;
+        case 'oauth2':
+          await oauth2(this.pb, parsedData.data, this.sendMessage);
+          break;
+        case 'list':
+          this.sendMessage(await this.CrudManager.list(parsedData));
+          break;
+        case 'create':
+          await this.CrudManager.create(parsedData.data, this.sendMessage);
+          break;
+        case 'read':
+          await this.CrudManager.read(parsedData.data, this.sendMessage);
+          break;
+        case 'update':
+          await this.CrudManager.update(parsedData.data, this.sendMessage);
+          break;
+        case 'delete':
+          await this.CrudManager.delete(parsedData.data, this.sendMessage);
+          break;
+        case 'isnew':
+          await isNew(this.pb, parsedData.data, this.sendMessage);
+          break;
+        default:
+          this.sendMessage({ error: 'invalid request type' });
+          break;
+      }
+      resolve();
+    });
+  }
+
+  isRateLimited(token, {method} = {}) {
+    // check if token is rateloimited for this request type
+    const tokenUsage = this.rateLimits.get(token);
+    if (!tokenUsage) return false;
+    if (Date.now() - tokenUsage.timestamp > this.Duration) {
+      return false;
+    }
+    if (tokenUsage.count >= this.rateLimit) {
+      return true;
+    }
+  }
+
+  clearExpiredLimits(type, token) {
+    const tokenUsage = this.rateLimits.get(token);
+    if (!tokenUsage) return;
+    if (Date.now() - tokenUsage.timestamp > this.Duration) {
+      console.log(`Cleared ${type} rate limit for ${token}`);
+      this.rateLimits.delete(token);
+    }
+  }
+
+  updateTokenUsage(token, type) {
+    const tokenUsage = this.rateLimits.get(token) || { count: 0, timestamp: Date.now() };
+    tokenUsage.count++;
+    tokenUsage.timestamp = Date.now();
+    this.rateLimits.set(token, tokenUsage);
+    this.clearExpiredLimits(type, token);
+  }
+
+  enqueueRequest(request) {
+    this.requestsQueue.push(request);
+  }
+
+  async processQueue() {
+    if (!this.isProcessing && this.requestsQueue.length > 0) {
+      this.isProcessing = true;
+      const request = this.requestsQueue.shift();
+      await this.onMessage(JSON.stringify(request));
+      this.isProcessing = false;
+      this.processQueue();
+    }
   }
 }
