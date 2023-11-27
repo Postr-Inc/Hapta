@@ -49,17 +49,25 @@ export default class tweeterSDK {
     declare localStorage: any
     token: string
     changeEvent: CustomEvent
+    cancellation: any
     pbUrl: string
-    constructor(wsUrl: string, pbUrl: string) {
+    currType: string
+    constructor(wsUrl: string, pbUrl: string, cancellation?: boolean) {
         this.token = JSON.parse(localStorage.getItem("tweeter_auth") || "{}").token
         this.isStandalone = false
         typeof window == "undefined" ? this.type = "server" : this.type = "client"
         this.ws = new WebSocket(wsUrl)
+        /**
+         * @param {boolean} cancellation
+         * @description cancel request if taking too long
+         */
+        this.cancellation  = cancellation
         this.sendMessage = (e) => {
             this.waitForSocketConnection(() => {
                 this.ws.send(e)
             })
         }
+        this.currType = ""
         this.pbUrl = pbUrl
 
         this.callbacks = new Map()
@@ -145,20 +153,20 @@ export default class tweeterSDK {
          * @description check if token is expired
          */
         isValid: isTokenExpired(JSON.parse((localStorage.getItem("tweeter_auth") || '{}')) ? JSON.parse((localStorage.getItem("tweeter_auth") || '{}')).token : null,
-            0),
-        isRatelimited: () => {
-            return new Promise((resolve, reject) => {
-                this.callbacks.set("isRatelimited", (data: any) => {
-                    if (data.error) reject(new Error(data.error))
-                    else resolve(data)
-                    this.callbacks.delete("isRatelimited")
-                })
-                this.sendMessage(JSON.stringify({ type: "isRatelimited", key: "isRatelimited", token: this.token }))
-            })
-        }
+            0) 
 
     }
 
+    public isRatelimited: Function = (type: string) => {
+        return new Promise((resolve, reject) => {
+        this.callbacks.set('isRatelimited', (data: any) => {
+            if (data.error) reject(data.error);
+            else resolve(data)
+            this.callbacks.delete('isRatelimited');
+        })
+        this.sendMessage(JSON.stringify({ type: "isRatelimited",  key: 'isRatelimited', token:this.token, method: type}))
+    })
+    } 
     /**
      * @method authWithPassword
      * @param emailOrUsername 
@@ -166,6 +174,8 @@ export default class tweeterSDK {
      * @returns  {Promise<model>}
      * @description Authenticate user with email or username and password
      */
+
+
     public authWithPassword(emailOrUsername: string, password: string) {
         return new Promise((resolve, reject) => {
             if (typeof window == "undefined") {
@@ -312,19 +322,26 @@ export default class tweeterSDK {
 
     public read(data: { id: string, collection: string, returnable?: Array<string>, expand: Array<string> }) {
         return new Promise((resolve, reject) => {
-            let key = crypto.randomUUID()
-            !data.collection ? (reject(new Error("collection is required"))) : null
-            !this.authStore.isValid ? (reject(new Error("token is expired"))) : null
-            this.callbacks.set(key, (data: any) => {
-                if (data.error) reject(data);
-                resolve(data)
-            })
-
+            let key = crypto.randomUUID();
+            !data.collection ? (reject(new Error("collection is required"))) : null;
+            !this.authStore.isValid ? (reject(new Error("token is expired"))) : null;
+    
+            this.callbacks.set(key, (responseData: any) => {
+                if (responseData.error) {
+                    reject(responseData);
+                } else {
+                    resolve(responseData);
+                }
+                this.callbacks.delete(key);
+            });
+    
             this.sendMessage(JSON.stringify({
                 type: "read", key: key, collection: data.collection, token: this.token, id: data.id, returnable: data.returnable, expand: data.expand
-            }))
-        })
+            }));
+     
+        });
     }
+    
     /**
      * @method update
      * @param data 
@@ -359,17 +376,38 @@ export default class tweeterSDK {
      */
     public list(data: { collection: string, filter?: string, sort?: string, limit?: number, page?: number, returnable?: Array<string>, expand: Array<string> }) {
         return new Promise((resolve, reject) => {
-            let key = crypto.randomUUID()
-            !data.collection ? (reject(new Error("collection is required"))) : null
-            !this.authStore.isValid ? (reject(new Error("token is expired"))) : null
-            this.callbacks.set(key, (data: any) => {
-                if (data.error) reject(data);
-                resolve(data)
-            })
-
-            this.sendMessage(JSON.stringify({ type: "list", key: key, token: this.token, data: { returnable: data.returnable || null, collection: data.collection, sort: data.sort, filter: data.filter, limit: data.limit, offset: data.page, id: this.authStore.model?.id || null, expand: data.expand || null } }))
-        })
+            let key = crypto.randomUUID();
+            this.currType = "list"
+            !data.collection ? (reject(new Error("collection is required"))) : null;
+            !this.authStore.isValid ? (reject(new Error("token is expired"))) : null;
+    
+            this.callbacks.set(key, (responseData: any) => {
+                if (responseData.error)  return;
+                else resolve(responseData);
+                this.callbacks.delete(key);
+            });
+    
+            this.sendMessage(JSON.stringify({
+                   type: "list", 
+                    key: key, token: 
+                    this.token, 
+                    data: {
+                    returnable: data.returnable || null,
+                    collection: data.collection,
+                    sort: data.sort,
+                    filter: data.filter,
+                    limit: data.limit,
+                    offset: data.page,
+                    id: this.authStore.model?.id || null,
+                    expand: data.expand || null
+                }
+            }));
+    
+            
+            
+        });
     }
+    
     /**
      * @method delete
      * @param data 
