@@ -74,7 +74,7 @@ export class TokenManager{
     async isValid(token){
          
         try {
-            console.log(this.decode(token).id)
+             
             let signingKey = await this.getSigningKey(this.decode(token).id)            
             jwt.verify(token, signingKey.key)
 
