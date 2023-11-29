@@ -12,27 +12,6 @@ What is hapta? - hapta is a backend websocket server layer for pocketbase, it he
 
 # Usage
 
-```js
-import Hapta from '/path/index.js'
-const h = new Hapta({
-    shouldLog: true,
-    Init: {
-    email:  process.env.EMAIL,
-    password: process.env.PASSWORD,
-    DbUrl: 'pocketbase instance url',
-  },
-  Port: 8080,
-  RateLimits: {
-    list: {
-      RequestLimit: 10,
-      Duration: 20000,
-    },
-    update: {
-      RequestLimit: 2,
-      Duration: 20000,
-    },
-  }
-});
-
-
+```bash
+node index.js -p 8080 -d pocketbaseUrl  -l true -c '/config.json'
 ```
