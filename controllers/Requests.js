@@ -5,7 +5,7 @@ import { CrudManager } from "./Crud.js";
 import oauth2 from "./Oauth2.js";
 
 export class Requests {
-  constructor(wss, pb, rateLimitsList = new Map(), data = { email: "", password: "" }) {
+  constructor(wss, pb, rateLimitsList = new Map(), data = { email: "", password: "" }, rules = []) {
     this.wss = wss;
     this.pb = pb;
     this.rateLimitsList = rateLimitsList;
@@ -16,9 +16,12 @@ export class Requests {
     this.rateLimits = new Map();
     this.tokenManager = new TokenManager(pb);
     this.CrudManager = new CrudManager(pb, this.tokenManager);
+    this.rules = rules;
+    this.authenticated = false
   }
 
   async onConnection(ws) {
+    global.shouldLog ? console.log('\nClient connected current clients: ' + this.wss.clients.size) : null;
     ws.on('message', (data) => this.onMessage(data));
     this.sendMessage = (data) => {
       ws.send(JSON.stringify(data));
@@ -28,25 +31,28 @@ export class Requests {
   }
 
   async onMessage(data) {
+   if(!this.authenticated) {
     await this.pb.admins.authWithPassword(process.env.EMAIL, process.env.PASSWORD);
+    this.authenticated = true
+   }
+
+   
     const parsedData = JSON.parse(data);
     const token = parsedData.token || parsedData.data.token;
     const usageType = parsedData.type;
 
-   if(!token || this.tokenManager.isValid(token) === false)  {
-      this.sendMessage({error:true, message: 'invalid token' });
-      return;
-   }
+ 
     if (usageType !== 'isRatelimited' && usageType !== 'isValid'
   
     ) {
       this.initializeRateLimit(usageType);
       await this.waitForRateLimit(token, usageType);
       await this.processRequest(parsedData, token);
-      this.updateTokenUsage(token, usageType);
+     usageType !== 'authWithPassword' && usageType !== 'oauth2' ? this.updateTokenUsage(token, usageType) : null;
     } else {
        usageType === 'isRatelimited' ? this.sendMessage({ isRatelimited: this.isRateLimited(token), key: parsedData.key, Duration: this.Duration}) : this.sendMessage({ isValid: await this.tokenManager.isValid(token) });
     }
+     
   }
 
   initializeRateLimit(type) {
@@ -55,6 +61,7 @@ export class Requests {
     }
 
     const { RequestLimit, Duration } = this.rateLimitsList.get(type);
+    const rule  = this.rules.find((r)=> r.key === type)
     this.rateLimit = RequestLimit;
     this.Duration = Duration;
   }
@@ -64,9 +71,9 @@ export class Requests {
       const checkRateLimit = () => {
         if (!this.isRateLimited(token)) {
           resolve();
-          console.log(`Rate limit cleared for ${type} for ${this.tokenManager.decode(token).id}`);
+          console.log(`\n${type} rate limit cleared for ${this.tokenManager.decode(token).id}`)
         } else {
-          console.log(`Waiting for ${type} rate limit for ${this.tokenManager.decode(token).id}`)
+          console.log(`\nWaiting for ${type} rate limit for ${this.tokenManager.decode(token).id}`)
           this.clearExpiredLimits(type, token);
           setTimeout(checkRateLimit, this.Duration);
         }
@@ -91,8 +98,8 @@ export class Requests {
         case 'authUpdate':
           this.sendMessage(await authUpdate(this.pb, parsedData, this.sendMessage))
           break;
-        case 'oauth2':
-          await oauth2(this.pb, parsedData.data, this.sendMessage);
+        case 'oauth':
+          await oauth2(this.tokenManager, this.pb, this.sendMessage, parsedData.data);
           break;
         case 'list':
           this.sendMessage(await this.CrudManager.list(parsedData));
@@ -136,7 +143,7 @@ export class Requests {
     const tokenUsage = this.rateLimits.get(token);
     if (!tokenUsage) return;
     if (Date.now() - tokenUsage.timestamp > this.Duration) {
-      console.log(`Cleared ${type} rate limit for ${token}`);
+      console.log(`\nCleared ${type} rate limit for ${this.tokenManager.decode(token).id}`);
       this.rateLimits.delete(token);
     }
   }

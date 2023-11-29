@@ -27,7 +27,8 @@ export class CrudManager {
         }
     }
     async list(data) {
-        const { collection, limit, offset, sort, filter, expand, returnable } = data.data;
+       
+        const { collection, limit, offset, sort, filter, expand, returnable } =  data.data
 
         if (data.data.collection === 'authState' || data.data.collection.includes('authState')) {
             return { error: true, message: null, key: data.key };
@@ -178,7 +179,6 @@ export class CrudManager {
                                         res.expand[k][key].email &&
                                         res.expand[k][key].emailVisibility === false
                                     ) {
-                                        console.log('deleting email');
                                         delete newRecord.expand[key].email;
                                     } 
                                 }
@@ -201,7 +201,7 @@ export class CrudManager {
                         return { error: false, key: data.key, data: res };
                     }
                 } catch (error) {
-                    console.log(error);
+                    global.shouldLog && console.log(error)
                     return { error: true, message: error.message, key: data.key };
                 }
         }

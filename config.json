@@ -1,0 +1,17 @@
+{
+    "RateLimits":{
+        "create":{
+            "RequestLimit": 1,
+            "Duration":"60000"
+        },
+        "list":{
+            "RequestLimit": 1000,
+            "Duration":"20000"
+        }
+    },
+    "Rules":{
+        "create":{
+            "email":"unique"
+        }
+    }
+}

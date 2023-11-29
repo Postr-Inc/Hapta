@@ -1,4 +1,3 @@
-import {  TokenManager } from "../utils/jwt.js"
  
 
 export default async function authWithPassword(pb,  data){
@@ -17,10 +16,10 @@ export default async function authWithPassword(pb,  data){
         }
     default:
           
-   console.log(data)
+ 
     try {
         let res = await pb.admins.client.collection('users').authWithPassword(data.email || data.username, data.password)
-        console.log(res)
+     
        
           
       return {type:'auth&password', key:'auth&password', clientData:res}
@@ -32,7 +31,7 @@ export default async function authWithPassword(pb,  data){
    }
 }
 
-export async function authUpdate(pb, data){
+export async function authUpdate(pb, data, tokenManager){
   switch(true){
     case !data.token:
         return {
@@ -45,8 +44,8 @@ export async function authUpdate(pb, data){
             message: 'auth record is required'
         }
     default:
-  
-        if(idFromToken !== data.record.id){
+ 
+        if(tokenManager.decode(data.token).id !== data.record.id || !tokenManager.isValid(data.token)){
             return {
                 error: true,
                 message: 'You are not authorized to perform this action'
@@ -55,7 +54,9 @@ export async function authUpdate(pb, data){
 
         try {
              
-           
+        
+        let res = await pb.admins.client.collection('users').getOne(data.record.id)
+        return {error: false, message: 'success', key: data.key, clientData: res}
 
         } catch (error) {
             return {error: true, message: error.message, key: data.key}
