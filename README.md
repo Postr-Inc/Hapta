@@ -13,5 +13,6 @@ What is hapta? - hapta is a backend websocket server layer for pocketbase, it he
 # Usage
 
 ```bash
+<port> - <url> - <log boolean> - <config_file>
 node index.js -p 8080 -d pocketbaseUrl  -l true -c '/config.json'
 ```
