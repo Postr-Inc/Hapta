@@ -77,15 +77,11 @@ program
   .option('-p, --port <number>', 'Port to run server on')
   .option('-d, --dbUrl <string>', 'Database url')
   .option('-l, --log', 'Log requests')
-  .option('-r, --rateLimits <string>', 'Rate limits')
   .option('-c, --config <string>', 'Config file')
   .parse(process.argv);
 
  
-
-if(program.rateLimits){
- console.log(program.rateLimits)
-}
+ 
 
 
 const options = program.opts();
@@ -108,6 +104,8 @@ if(options.config){
   catch(err){
     throw new Error(`Could not read config file: ${err.message}`)
   }
+}else{
+  throw new Error('Config file is required')
 }
 
 if(options.log){

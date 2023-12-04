@@ -1,9 +1,11 @@
 import { it } from "node:test";
-
+import events from "events";
 export class CrudManager {
     constructor(pb, tokenManager) {
         this.pb = pb
         this.tokenManager = tokenManager
+        this.event = new events.EventEmitter()
+         
     }
 
     async create(data) {
@@ -115,6 +117,8 @@ export class CrudManager {
                         newRecord[key] = item[key];
                     });
 
+                     
+
                     return newRecord;
                     
                 });
@@ -207,6 +211,20 @@ export class CrudManager {
         }
     }
 
+    async subscribe(data, sendMessage) {
+       
+        if(data.records){
+            data.records.forEach((record)=>{
+                this.event.on(data.eventType, (data)=>{
+                    sendMessage({key:data.key, eventType: data.eventType, data: data})
+                })
+            })
+            return;
+        }
+         this.event.on(data.eventType, (data)=>{
+              sendMessage({key:data.key, eventType: data.eventType, data: data})
+         })
+    }
     async delete(data) {
         switch (true) {
             case data.collection === 'authState' || data.collection.includes('authState'):
@@ -224,6 +242,7 @@ export class CrudManager {
             default:
                 try {
                     await this.pb.admins.client.collection(data.collection).delete(data.id)
+                    this.event.emit('delete', {key: data.id, collection: data.collection})
                     return { error: false, key: data.key, data: { message: 'success', code: 200 } }
                 } catch (error) {
                     return { error: true, message: error.message, key: data.key }
@@ -250,6 +269,7 @@ export class CrudManager {
                 try {
                     
                     let res = await this.pb.admins.client.collection(data.collection).update(data.id, data.data)
+                    this.event.emit('update', {key: res.id, collection: data.collection, record: res})
                     return { error: false, key: data.key, data: res }
                 } catch (error) {
                     return { error: true, message: error.message, key: data.key }
@@ -257,3 +277,4 @@ export class CrudManager {
         }
     }
 }
+

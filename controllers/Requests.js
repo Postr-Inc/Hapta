@@ -18,25 +18,43 @@ export class Requests {
     this.CrudManager = new CrudManager(pb, this.tokenManager);
     this.rules = rules;
     this.authenticated = false
+    this.events = new Map();
   }
 
   async onConnection(ws) {
     global.shouldLog ? console.log('\nClient connected current clients: ' + this.wss.clients.size) : null;
     ws.on('message', (data) => this.onMessage(data));
     this.sendMessage = (data) => {
+      if (ws.readyState !== ws.OPEN) {
+        return;
+      }
       ws.send(JSON.stringify(data));
     };
 
     this.processQueue();
+    if(!this.authenticated) {
+      console.log('\n🔒 Authenticating')
+      try {
+        await this.pb.admins.authWithPassword(process.env.EMAIL, process.env.PASSWORD);
+        this.authenticated = true
+       global.shouldLog ?  console.log('\n🔒 Authenticated') : null;
+      } catch (error) {
+        global.shouldLog ? console.error(`\n🔒 Error authenticating: ${error.message}`) : null;
+        
+      }
+    
+     }
+
   }
 
+  async handleServerSide(data){}
+
+
   async onMessage(data) {
-   if(!this.authenticated) {
-    await this.pb.admins.authWithPassword(process.env.EMAIL, process.env.PASSWORD);
-    this.authenticated = true
-   }
+ 
 
    
+
     const parsedData = JSON.parse(data);
     const token = parsedData.token || parsedData.data.token;
     const usageType = parsedData.type;
@@ -118,6 +136,9 @@ export class Requests {
           break;
         case 'isnew':
           await isNew(this.pb, parsedData.data, this.sendMessage);
+          break;
+        case 'subscribe':
+          this.CrudManager.subscribe(parsedData, this.sendMessage);
           break;
         default:
           this.sendMessage({ error: 'invalid request type' });
