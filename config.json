@@ -1,17 +1,56 @@
 {
-    "RateLimits":{
-        "create":{
-            "RequestLimit": 1,
-            "Duration":"60000"
-        },
-        "list":{
-            "RequestLimit": 1000,
-            "Duration":"20000"
-        }
+  "ratelimits": {
+    "create": {
+      "limit": 100,
+      "every": 86400000
     },
-    "Rules":{
-        "create":{
-            "email":"unique"
-        }
+    "default": {
+      "limit": 100,
+      "every": 86400000
+    },
+    "authUpdate": {
+      "limit": 10,
+      "every": 20000
+    },
+    "list": {
+      "limit": 100,
+      "every": 20000
+    },
+    "subscribe": {
+      "limit": 1,
+      "every": 2500
+    },
+    "delete": {
+      "limit": 100,
+      "every": 20000
     }
+  },
+  "cannotUpdate": {
+    "users": {
+      "others": [
+        "email",
+        "password",
+        "username",
+        "id",
+        "created",
+        "updated",
+        "bookmarks",
+        "location",
+        "social",
+        "blocked",
+        "validVerified",
+        "postr_plus",
+        "plus_subscriber_since",
+        "following",
+        "avatar",
+        "banner"
+      ],
+      "self": [
+        "postr_plus",
+        "validVerified",
+        "plus_subscriber_since",
+        "followers"
+      ]
+    }
+  }
 }
