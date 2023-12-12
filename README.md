@@ -25,7 +25,7 @@ ADMIN_PASSWORD=
 REDIS_HOST=
 REDIS_PORT=
 REDIS_PASSWORD=
-
+```
 ```bash
 bun server.ts
 ```
