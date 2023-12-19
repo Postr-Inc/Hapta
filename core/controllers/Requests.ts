@@ -74,13 +74,10 @@ export default class RequestHandler {
       const checkRateLimit = () => {
         if (!this.isRatelimited(token, type)) {
           resolve();
-          console.log(
-            `\n${type} rate limit cleared for ${
-              this.TokenManager.decode(token).id
-            }`
-          );
+          
         } else {
           this.clearExpiredLimits(type, token);
+          console.log(`Waiting for ${type} rate limit to clear`);
           setTimeout(
             checkRateLimit,
             this.rateLimits.has(type) ? this.rateLimits.get(type).every : 1000
@@ -96,8 +93,14 @@ export default class RequestHandler {
       const client = this.ratelimitsClients.find(
         (client) => client.token === token
       );
-      client.used += 1;
-      client.lastUsed = Date.now();
+      if (!client) return;
+      if (Date.now() - client.lastUsed > this.rateLimits.get(type)?.every) {
+        client.used = 1;
+        client.lastUsed = Date.now();
+      } else {
+        client.used++;
+        client.lastUsed = Date.now();
+      }
     } else {
       this.ratelimitsClients.push({
         token,
@@ -114,14 +117,14 @@ export default class RequestHandler {
         (client) => client.token === token && client.type === type
       )
     ) {
-      const tokenUsage = this.ratelimitsClients.find(
-        (client) => client.token === token
+      const client = this.ratelimitsClients.find(
+        (client) => client.token === token && client.type === type
       );
-      if (!tokenUsage || !this.rateLimits.get(type)) return false;
-      if (Date.now() - tokenUsage.lastUsed > this.rateLimits.get(type)?.every) {
-        return false;
-      } else if (tokenUsage.used >= this.rateLimits.get(type)?.limit) {
-        return true;
+      if (!client) return false;
+      if (client.used >= this.rateLimits.get(type)?.limit) {
+        if (Date.now() - client.lastUsed < this.rateLimits.get(type)?.every) {
+          return true;
+        }
       }
     }
     return false;
@@ -132,17 +135,12 @@ export default class RequestHandler {
       (client) => client.token === token
     );
     if (!tokenUsage) return;
-    if (
-      Date.now() - tokenUsage.lastUsed >= this.rateLimits.get(type)?.every ||
-      tokenUsage.used >= this.rateLimits.get(type)?.limit
-    ) {
-      console.log(
-        `\nCleared ${type} rate limit for ${this.TokenManager.decode(token).id}`
-      );
-      this.ratelimitsClients = this.ratelimitsClients.filter(
-        (client) => client.token !== token
-      );
-    }
+    if (tokenUsage.used >= this.rateLimits.get(type)?.limit) {
+      if (Date.now() - tokenUsage.lastUsed > this.rateLimits.get(type)?.every) {
+        tokenUsage.used = 0;
+        tokenUsage.lastUsed = Date.now();
+      }
+    } 
   }
 
   public async handleRequest(msg: any) {
@@ -156,8 +154,7 @@ export default class RequestHandler {
       msg.type !== "isRatelimited" &&
       msg.type !== "fetchFile"
     ) {
-      if (!this.TokenManager.isValid(msg.token, true))
-        return this.sendMsg({ error: true, message: "Invalid token" });
+      if (!this.TokenManager.isValid(msg.token, true)) return this.sendMsg({ error: true, message: "Invalid token" });
       this.updateTokenUsage(msg.token, msg.type);
       await this.waitForRateLimit(msg.token || msg.data?.token, msg.type);
     }

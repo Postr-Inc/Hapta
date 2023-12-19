@@ -16,6 +16,7 @@ export default class CrudManager {
     this.evt =  new EventEmitter()
   }
   async list(data: any) {
+    console.log(data)
     let { collection, limit, offset, filter, sort, expand, returnable } = data.data
  
     switch (true) {
@@ -69,22 +70,23 @@ export default class CrudManager {
           expand ?  expand.forEach((d) => {
             expansion += `${d},`
           }): null
-          console.log(filter)
+         
+          
           let res: any = await pb.admins.client
             .collection(collection)
             .getList(offset, limit, {
               filter: filter || "",
-              sort: sort || "",
+              sort: sort || "created",
               expand: expansion || "",
             });
              
-            
+        
 
           collection === "users" && res.items.length > 0 && res.items.forEach((item) => {
             if (item.emailVisibility === false) delete item.email;
           });
           let newItems = res.items.map((item: any) => {
-          
+             
             let newRecord = {
               id: item.id,
               expand: {},
@@ -302,7 +304,7 @@ export default class CrudManager {
                 data.expand ? data.expand.forEach((d) => {
                   expand += `${d},`
                 }): null
-                console.log(expand)
+                 
                 
                 let res = await this.pb.admins.client.collection(data.collection).create(data.record, {
                   expand: expand || ""
@@ -360,7 +362,7 @@ export default class CrudManager {
             
              
       for(var i in data.data){
-        console.log(data.data[i].update)
+         
         if(data.data[i].isFile && data.data[i].file
         && data.data[i].update  
         ){

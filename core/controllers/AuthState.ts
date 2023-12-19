@@ -35,8 +35,7 @@ export default class AuthSate{
                 try {
                      
                 let d = await pb.admins.client.collection('users').getOne(data.data.record.id)
-              
-              
+               
                 return {error: false, message: 'success', key: data.data.key, clientData:d  }
         
                 } catch (error) {
