@@ -12,6 +12,7 @@ export default class AuthSate{
     }
 
    public async authUpdate(data: any){
+    console.log(data)
         switch(true){
             case !data.token:
                 return {
@@ -34,13 +35,13 @@ export default class AuthSate{
         
                 try {
                      
-                let d = await pb.admins.client.collection('users').getOne(this.tokenManager.decode(data.token).id)
+                let d = await pb.admins.client.collection('users').getOne(data.data.record.id)
                
-                return {error: false, message: 'success', key: data.data.key, clientData:d  }
+                return {error: false, message: 'success', key: data.data.key, clientData:d, session: data.session}
         
                 } catch (error) {
        
-                    return {error: true, message: error.message, key: data.key}
+                    return {error: true, message: error.message, key: data.key, session: data.session}
                 }
           }
     
@@ -70,6 +71,55 @@ export default class AuthSate{
                 }
 
         }
+    }
+
+    async oauth(data: any, msg: any){
+        
+    let session = data.session
+    data = data.data
+
+    try {
+        let res  = await pb.admins.client.collection('users').authWithOAuth2({
+            provider: data.provider,
+            createData: {
+             bio: "I am new to Postr!",
+             followers: [],
+             following: [],
+            },
+            redirectUrl: data.redirect_uri,
+            urlCallback: (url) => {
+               
+               msg({
+                    type: 'oauth',
+                    key:'oauth',
+                    data: {
+                        url: url
+                    },
+                    session: session
+                 
+                })
+            },
+           }) 
+
+        let signingKey = await  this.tokenManager.generateSigningKey(res.record.id, true) as string;
+  
+        let newtoken = await  this.tokenManager.sign(res.record.id,  signingKey) as string;
+        res['token'] = newtoken as string;
+
+        global.shouldLog && console.log(`User ${res.record.id} logged in`);
+
+        msg({type:'oauth', key:'oauth', clientData:res, session: session})
+
+    
+
+             
+      } catch (error) {
+        console.log(error)
+     
+        msg({type:'oauth', key:'oauth', error: true, message: error.message, session:  data.session})
+        
+        
+      }
     }
 
     async checkUsername(username: string){

@@ -35,7 +35,7 @@ try {
 let ws = null; 
 let reqHandler = new RequestHandler(ws,   pb,  config)
  
-const server =  Bun.serve({
+export const server =  Bun.serve({
     port: port,
     fetch(req: any, server: any) {
       const success = server.upgrade(req);
@@ -54,8 +54,17 @@ const server =  Bun.serve({
     websocket: {
      
  
+      open(ws) {
+        reqHandler.ws = () => ws;
+      },
       async message(ws, message) {
          reqHandler.ws = () => ws;
+         let data = JSON.parse(message)
+         if(data.type === 'authSession'){
+            console.log("Authenticating session", data.session)
+            ws.subscribe(data.session) 
+            return;
+         }
          reqHandler.handleRequest(message)
       },
       close(ws) {

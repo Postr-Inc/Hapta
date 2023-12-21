@@ -18,6 +18,7 @@ export default class CrudManager {
   async list(data: any) {
     let { collection, limit, offset, filter, sort, expand, returnable } = data.data
  
+   
     switch (true) {
       case collection === "authState" || collection === "devAuthState":
         return { error: true, message: null, key: data.key };
@@ -78,7 +79,7 @@ export default class CrudManager {
               sort: sort || "created",
               expand: expansion || "",
             });
-             
+        
         
 
           collection === "users" && res.items.length > 0 && res.items.forEach((item) => {
@@ -140,52 +141,19 @@ export default class CrudManager {
           res.items = newItems;
            
           
-          return { error: false, key: data.key, data: res };
+          return { error: false, key: data.key, data: res,  session: data.session };
 
            
         } catch (error) {
           console.log(error)
-          return { error: true, message: error.message, key: data.key };
+          return { error: true, message: error.message, key: data.key , session: data.session};
         }
     }
   }
   async subscribe(data: any, msg: any) {
     let { collection,  key, event, returnable } = data;
  
-    switch (true) {
-      case  collection === "authState" || collection === "devAuthState" :
-        msg({ error: true, message: null });
-      case !data.token || !(await this.tokenManager.isValid(data.token, true)):
-         msg({ error: true, message: "Invalid token" });
-      case !data.collection:
-        msg({ error: true, message: "collection is required" });
-      case !data.id:
-        msg({ error: true, message: "record id is required" });
-      case !data.key:
-        msg({ error: true, message: "key is required" });
-      case  returnable && !Array.isArray(returnable):
-        msg({ error: true, message: "returnable must be an array", from: "subscribe"});
-      default:
-   
-      try {
-
-        this.evt.on(event, (data) => {
-         if(!data.collection === collection)  return
-          data.collection === 'users' && data.record.emailVisibility === false ? delete data.record.email : null
-          msg({
-            type: "subscription",
-            key:  key,
-            data:  data.record,
-            event: data.action,
-          })
-
-        })
-        
-      } catch (error) {
-        console.log(error)
-      }
-       
-    }
+   console.log(data)
   }
   async unsubscribe(data: any) {
     try {
@@ -423,7 +391,7 @@ async delete(data: any) {
               return { error: false, key: data.key, data: res }
           } catch (error) {
             console.log(error)
-              return { error: true, message: error.message, key: data.key }
+              return { error: true, message: error.message, key: data.key , token: data.token}
           }
   }
 }

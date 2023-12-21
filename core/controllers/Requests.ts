@@ -1,3 +1,4 @@
+import { server} from "../../server";
 import { TokenManager } from "../utils/jwt/JWT";
 import AuthSate from "./AuthState";
 import CDN from "./Cdn";
@@ -26,9 +27,9 @@ export default class RequestHandler {
     this.addedLimits = false;
 
     this.isServer = false;
-    this.sendMsg = (msg: string) => {
+    this.sendMsg = (msg: any ) => { 
       this.waitForSocketConnection(() => {
-        this.ws().send(JSON.stringify(msg));
+        server.publish(msg.session, JSON.stringify(msg));
       });
     };
     this.pb = pb;
@@ -74,10 +75,9 @@ export default class RequestHandler {
       const checkRateLimit = () => {
         if (!this.isRatelimited(token, type)) {
           resolve();
-          console.log(`Rate limit cleared for ${type}`);
+          
         } else {
           this.clearExpiredLimits(type, token);
-          console.log(`Waiting for ${type} rate limit to clear`);
           setTimeout(
             checkRateLimit,
             this.rateLimits.has(type) ? this.rateLimits.get(type).every : 1000
@@ -148,13 +148,14 @@ export default class RequestHandler {
      
     if (msg.server) this.isServer = true;
 
+    if(!msg.session) return  
     if (
       msg.type !== "oauth" &&
       msg.type !== "authwithpassword" &&
       msg.type !== "isRatelimited" &&
       msg.type !== "fetchFile"
     ) {
-      if (!this.TokenManager.isValid(msg.token, true)) return this.sendMsg({ error: true, message: "Invalid token" });
+      if (!this.TokenManager.isValid(msg.token, true)) return this.sendMsg({ error: true, message: "Invalid token" , session: msg.session});
       this.updateTokenUsage(msg.token, msg.type);
       await this.waitForRateLimit(msg.token || msg.data?.token, msg.type);
     }
@@ -175,16 +176,12 @@ export default class RequestHandler {
                 (client) => client.token === msg.token
               )?.used,
               key: msg.key,
+              session: msg.session
             });
         break;
       case "oauth":
-        if (this.isServer)
-          return this.sendMsg({
-            error: true,
-            message:
-              "Cannot use client oauth instead use the server oauth gateway",
-          });
-        await oauth2(this.TokenManager, this.sendMsg, msg.data);
+        
+        await this.authState.oauth(msg, this.sendMsg);
         break;
       case "authUpdate":
         this.sendMsg(await this.authState.authUpdate(msg));
@@ -221,8 +218,8 @@ export default class RequestHandler {
       case "checkUsername":
         this.sendMsg({key: msg.key, error:false, message:await this.authState.checkUsername(msg.data.username)});
         break;
-      default:
-        this.sendMsg({ error: true, message: "Invalid request type" });
+      default: 
+      
         break;
     }
   }
