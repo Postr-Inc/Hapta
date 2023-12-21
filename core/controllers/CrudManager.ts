@@ -16,7 +16,6 @@ export default class CrudManager {
     this.evt =  new EventEmitter()
   }
   async list(data: any) {
-    console.log(data)
     let { collection, limit, offset, filter, sort, expand, returnable } = data.data
  
     switch (true) {
@@ -312,6 +311,8 @@ export default class CrudManager {
                 this.evt.emit('create', {collection: data.collection, record: res, action: 'create'})
                 return { error: false, key: data.key, data: res }
             } catch (error) {
+              console.log(error.data)
+               
                 return { error: true, message: error.message, key: data.key }
             }
     }

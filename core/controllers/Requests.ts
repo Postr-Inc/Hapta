@@ -74,7 +74,7 @@ export default class RequestHandler {
       const checkRateLimit = () => {
         if (!this.isRatelimited(token, type)) {
           resolve();
-          
+          console.log(`Rate limit cleared for ${type}`);
         } else {
           this.clearExpiredLimits(type, token);
           console.log(`Waiting for ${type} rate limit to clear`);
