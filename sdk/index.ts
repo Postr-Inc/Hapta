@@ -274,7 +274,7 @@ export  default class postrSdk {
                 resolve(data)
                 this.callbacks.delete('isRatelimited');
             })
-            this.sendMessage(JSON.stringify({ type: "isRatelimited",  key: 'isRatelimited', token:this.token, method: type}))
+            this.sendMessage(JSON.stringify({ type: "isRatelimited",  key: 'isRatelimited', token:this.token, method: type, session: this.sessionID }))
         })
         },
         clear: () => {

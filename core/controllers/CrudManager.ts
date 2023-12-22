@@ -359,9 +359,9 @@ export default class CrudManager {
         }
         
         this.evt.emit('update', {collection: data.collection, record: res, action: 'update'})
-        return { error: false, key: data.key, data: res }
+        return { error: false, key: data.key, data: res, session: data.session }
     } catch (error) {
-        return { error: true, message: error.message, key: data.key }
+        return { error: true, message: error.message, key: data.key,  session: data.session}
     }
 }
 async delete(data: any) {
