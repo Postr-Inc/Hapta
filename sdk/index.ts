@@ -175,6 +175,11 @@ export  default class postrSdk {
         
     }
 
+    /**
+     * @method cacehStore
+     * @description Cache values with exp duration in ms
+     * @returns {cacehStore}
+     */
     cacehStore = {
         set: (key: string, value: any, cacheTime: number) => {
             console.log("set")
@@ -220,7 +225,7 @@ export  default class postrSdk {
             return this.$memoryCache.entries()
         },
         keys: () => {
-            return this.$memoryCache.keys()
+            return  Array.from(this.$memoryCache.keys())
         }
     }
 
@@ -498,7 +503,7 @@ export  default class postrSdk {
 
 
 
-            this.sendMessage(JSON.stringify({ type: "update", key: key, data: data.record, collection: data.collection, sort: data.sort, filter: data.filter, token: this.token, id: data.id }))
+            this.sendMessage(JSON.stringify({ type: "update", key: key, data: data.record, collection: data.collection, sort: data.sort, filter: data.filter, token: this.token, id: data.id, session: this.sessionID }))
         })
     }
     /**
@@ -583,8 +588,8 @@ export  default class postrSdk {
 
             this.sendMessage(JSON.stringify({ method: "create", type: "create", key: key,  
             expand: data.expand,
-            record: data.record, collection: data.collection, token: this.token || null, id: this.authStore.model().id || null }))
-        })
+            record: data.record, collection: data.collection, token: this.token || null, id: this.authStore.model().id || null, session: this.sessionID }))
+        } )
     }
 
     public on(data:{event: string, id:string, collection: string}, callback: Function) {
