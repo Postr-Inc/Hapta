@@ -388,10 +388,10 @@ async delete(data: any) {
           try {
                let res = await this.pb.admins.client.collection(data.collection).delete(data.id)
                this.evt.emit('delete', {collection: data.collection, record: res, action: 'delete'})
-              return { error: false, key: data.key, data: res }
+              return { error: false, key: data.key, data: res, session: data.session }
           } catch (error) {
             console.log(error)
-              return { error: true, message: error.message, key: data.key , token: data.token}
+              return { error: true, message: error.message, key: data.key , token: data.token, session: data.session}
           }
   }
 }
