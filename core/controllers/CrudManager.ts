@@ -277,11 +277,11 @@ export default class CrudManager {
                   expand: expand || ""
                 })
                 this.evt.emit('create', {collection: data.collection, record: res, action: 'create'})
-                return { error: false, key: data.key, data: res }
+                return { error: false, key: data.key, data: res, session: data.session }
             } catch (error) {
               console.log(error.data)
                
-                return { error: true, message: error.message, key: data.key }
+                return { error: true, message: error.message, key: data.key , session: data.session}
             }
     }
 }
