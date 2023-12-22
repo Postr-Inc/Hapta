@@ -558,11 +558,7 @@ export  default class postrSdk {
                 resolve(data)
             })
 
-<<<<<<< HEAD
             this.sendMessage(JSON.stringify({ type: "delete", key: key, collection: data.collection, ownership:this.authStore.model().id, filter: data.filter, token: this.token, id: data.id || null , session: this.sessionID}))
-=======
-            this.sendMessage(JSON.stringify({ type: "delete", key: key, collection: data.collection, ownership:this.authStore.model().id, filter: data.filter, token: this.token, id: data.id || null }))
->>>>>>> e49aec73d368cd9cf5eea1004c0ef672d9bdf601
         })
     }
     /**
@@ -619,11 +615,7 @@ export  default class postrSdk {
     }
     public close() {
         this.ws.close()
-<<<<<<< HEAD
     }
 
      
-=======
-    } 
->>>>>>> e49aec73d368cd9cf5eea1004c0ef672d9bdf601
 }
