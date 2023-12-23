@@ -1,10 +1,8 @@
 import { server} from "../../server";
 import { TokenManager } from "../utils/jwt/JWT";
 import AuthSate from "./AuthState";
-import CDN from "./Cdn";
+ 
 import CrudManager from "./CrudManager";
-import oauth2 from "./oauth2";
-
 export default class RequestHandler {
   ws: any;
   sendMsg: any;
@@ -15,8 +13,9 @@ export default class RequestHandler {
   ratelimitsClients: Array<any>;
   TokenManager: TokenManager;
   authState: AuthSate;
-  Cdn: CDN;
+  isOnline: Map<string, any>; 
   isServer: boolean;
+  isSpamming: Map<string, any>;
   crudManager: CrudManager;
   constructor(ws: any, pb: any, Config: any) {
     this.ws = () => ws;
@@ -25,7 +24,8 @@ export default class RequestHandler {
     this.rateLimits = new Map();
     this.ratelimitsClients = new Array();
     this.addedLimits = false;
-
+    this.isOnline = new Map();
+    this.isSpamming = new Map();
     this.isServer = false;
     this.sendMsg = (msg: any ) => { 
       this.waitForSocketConnection(() => {
@@ -39,17 +39,18 @@ export default class RequestHandler {
     this.TokenManager = new TokenManager(this.pb);
     this.authState = new AuthSate(this.pb, this.TokenManager);
     this.crudManager = new CrudManager(this.pb, this.Config, this.TokenManager);
-    this.Cdn = new CDN(this.pb);
+ 
+    
   }
 
   public addLimits() {
     if (this.addedLimits) return;
 
     Object.keys(this.Config.ratelimits).forEach((key) => {
-      console.log(`Setting rate limit for ${key}`);
       this.rateLimits.set(key, {
         limit: this.Config.ratelimits[key].limit,
         every: this.Config.ratelimits[key].every,
+        maxUses: this.Config.ratelimits[key].maxUses || 0
       });
     });
 
@@ -69,8 +70,34 @@ export default class RequestHandler {
     }, 5);
   }
 
-  private waitForRateLimit(token: string, type: string) {
-    console.log(`Waiting for ${type} rate limit to clear`);
+
+  handleStatuses() {
+    const pingInterval = 1000;  
+    const offlineThreshold = 10000; 
+  
+    const updateStatus = () => {
+      let now = Date.now();
+  
+      let timeout = null
+      this.isOnline.forEach((user) => {
+        if (now - user.time >= offlineThreshold) {
+          this.isOnline.delete(user.userID);
+          console.log(`User ${user.userID} is now offline.`);
+        }
+      });
+  
+    
+  
+      this.ws().send(JSON.stringify({ type: "status", data: Array.from(this.isOnline.values()) }));
+   
+      setTimeout(updateStatus, pingInterval);
+    };
+ 
+    updateStatus();
+  }
+  
+
+  private waitForRateLimit(token: string, type: string) { 
     return new Promise<void>((resolve) => {
       const checkRateLimit = () => {
         if (!this.isRatelimited(token, type)) {
@@ -89,27 +116,33 @@ export default class RequestHandler {
     });
   }
   private updateTokenUsage(token: string, type: string) {
-    if (this.ratelimitsClients.find((client) => client.token === token)) {
-      const client = this.ratelimitsClients.find(
-        (client) => client.token === token
-      );
-      if (!client) return;
-      if (Date.now() - client.lastUsed > this.rateLimits.get(type)?.every) {
-        client.used = 1;
-        client.lastUsed = Date.now();
-      } else {
-        client.used++;
-        client.lastUsed = Date.now();
+    const client = this.ratelimitsClients.find((c) => c.token === token);
+  
+    if (client) {
+      client.used++;
+      client.lastUsed = Date.now();
+  
+      // Check if client is spamming
+      if (client.used >= this.rateLimits.get(type)?.maxUses) {
+        if (Date.now() - client.lastUsed < this.rateLimits.get(type)?.every) {
+          this.handleSpam(client); 
+          this.ws().unsubscribe(this.TokenManager.decode(token).id);
+          return;
+        } else {
+          this.isSpamming.delete(token);
+        }
       }
-    } else {
-      this.ratelimitsClients.push({
-        token,
-        used: 1,
-        lastUsed: Date.now(),
-        type: type,
-      });
     }
   }
+  
+  
+  private handleSpam(client: any) {
+    this.isSpamming.set(client.token, Date.now());
+    //@ts-ignore
+    server.unsubscribe(this.TokenManager.decode(client.token).id);
+    console.log(`Kicked ${this.TokenManager.decode(client.token).id} for spamming.`);
+  }
+  
 
   private isRatelimited(token: string, type: string) {
     if (
@@ -121,7 +154,7 @@ export default class RequestHandler {
         (client) => client.token === token && client.type === type
       );
       if (!client) return false;
-      if (client.used >= this.rateLimits.get(type)?.limit) {
+      if (client.used >= this.rateLimits.get(type)?.limit || client.used === 0) {
         if (Date.now() - client.lastUsed < this.rateLimits.get(type)?.every) {
           return true;
         }
@@ -135,8 +168,8 @@ export default class RequestHandler {
       (client) => client.token === token
     );
     if (!tokenUsage) return;
-    if (tokenUsage.used >= this.rateLimits.get(type)?.limit) {
-      if (Date.now() - tokenUsage.lastUsed > this.rateLimits.get(type)?.every) {
+    if (tokenUsage.used >= this.rateLimits.get(type)?.limit || tokenUsage.used === 0) {
+      if (Date.now() - tokenUsage.lastUsed >= this.rateLimits.get(type)?.every) {
         tokenUsage.used = 0;
         tokenUsage.lastUsed = Date.now();
       }
@@ -153,12 +186,15 @@ export default class RequestHandler {
       msg.type !== "oauth" &&
       msg.type !== "authwithpassword" &&
       msg.type !== "isRatelimited" &&
-      msg.type !== "fetchFile"
+      msg.type !== "fetchFile" 
+      && msg.type !== "ping"
     ) {
       if (!this.TokenManager.isValid(msg.token, true)) return this.sendMsg({ error: true, message: "Invalid token" , session: msg.session});
       this.updateTokenUsage(msg.token, msg.type);
       await this.waitForRateLimit(msg.token || msg.data?.token, msg.type);
-    }
+    } 
+
+   
 
     switch (msg.type) {
       case "authWithPassword":
@@ -179,6 +215,21 @@ export default class RequestHandler {
               session: msg.session
             });
         break;
+      case "ping":
+        let time = Date.now()
+        if(!msg.session || !msg.token) return this.sendMsg({error: true, message: "session and token are required"})
+        let id = this.TokenManager.decode(msg.token).id
+        this.isOnline.set(id, {time: time, userID: id})
+        this.sendMsg({ key: msg.key, time: time, session: msg.session, type: "pong", latency: Date.now() - time });
+        break;
+      case "checkStatus":
+        if(this.isOnline.get(this.TokenManager.decode(msg.token).id)){
+          this.sendMsg({key: msg.key, session: msg.session, type: "online", userID: msg.userID})
+        }else{
+          this.sendMsg({key: msg.key, type: "offline", userID: msg.userID})
+        }
+        break;
+      
       case "oauth":
         
         await this.authState.oauth(msg, this.sendMsg);
@@ -212,9 +263,7 @@ export default class RequestHandler {
           filter: `username = "${username}"`,
         });
         break;
-      case "fetchFile":
-        this.sendMsg(await this.Cdn.fetchFile(msg));
-        break;
+      
       case "checkUsername":
         this.sendMsg({key: msg.key, error:false, message:await this.authState.checkUsername(msg.data.username)});
         break;

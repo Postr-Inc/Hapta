@@ -2,23 +2,29 @@
 import { pb } from "../../server";
 import { TokenManager } from "../utils/jwt/JWT"
 import EventEmitter from "events";
+import CacheController from "./CacheController";
 export default class CrudManager {
   pb: any;
   Config: any;
   tokenManager: TokenManager;
   evt: EventEmitter;
   subscriptions: Map<string, any>;
-  constructor(pb: any, Config: any, tokenManager: TokenManager) {
+  Cache: CacheController;
+  constructor (pb: any, Config: any, tokenManager: TokenManager) {
     this.pb = pb;
     this.Config = Config;
     this.tokenManager = tokenManager;
     this.subscriptions = new Map();
     this.evt =  new EventEmitter()
+    this.Cache = new CacheController()  
+ 
+    this.schemas = this.Cache.tables()
   }
   async list(data: any) {
+    
     let { collection, limit, offset, filter, sort, expand, returnable } = data.data
  
-   
+ 
     switch (true) {
       case collection === "authState" || collection === "devAuthState":
         return { error: true, message: null, key: data.key };
@@ -71,6 +77,19 @@ export default class CrudManager {
             expansion += `${d},`
           }): null
          
+          let cacheKey = data.data.cacheKey ||  `${collection}_${offset}_${limit}_${filter ? filter.replace(/ /g, '') : ''}_${sort ? sort.replace(/ /g, '') : ''}_${expansion ? expansion.replace(/ /g, '') : ''}`
+          console.log(cacheKey)
+          
+          if(this.Cache.tableExists(collection) && this.Cache.exists(collection, cacheKey)){
+             let result = await this.Cache.getCache(collection, cacheKey) 
+            if(result){
+              let dt = JSON.parse(result.data)
+              return { error: false, key: data.key, data:dt, session: data.session };
+            }
+           
+          }else{
+            this.Cache.createTable(collection)
+          } 
           
           let res: any = await pb.admins.client
             .collection(collection)
@@ -79,6 +98,9 @@ export default class CrudManager {
               sort: sort || "created",
               expand: expansion || "",
             });
+
+            
+    
         
         
 
@@ -141,6 +163,9 @@ export default class CrudManager {
           res.items = newItems;
            
           
+          
+          this.Cache.setCache(collection, cacheKey,  JSON.stringify(res), Date.now() + 1200)
+       
           return { error: false, key: data.key, data: res,  session: data.session };
 
            
@@ -153,7 +178,7 @@ export default class CrudManager {
   async subscribe(data: any, msg: any) {
     let { collection,  key, event, returnable } = data;
  
-   console.log(data)
+ 
   }
   async unsubscribe(data: any) {
     try {
@@ -184,7 +209,7 @@ export default class CrudManager {
           message: "returnable must be an array",
         };
       default:
-        let idFromToken = this.tokenManager.decode(data.token).id;
+        let idFromToken = this.tokenManager.decode(data.token).id || null;
 
         try {
           let res = await this.pb.admins.client
@@ -272,6 +297,10 @@ export default class CrudManager {
                   expand += `${d},`
                 }): null
                  
+                if(this.Cache.tableExists(data.collection) && data.cacheKey){ 
+                  console.log('clearing cache')
+                  this.Cache.clear(data.collection, data.cacheKey)
+                }
                 
                 let res = await this.pb.admins.client.collection(data.collection).create(data.record, {
                   expand: expand || ""
@@ -286,7 +315,7 @@ export default class CrudManager {
     }
 }
   async update(data: any) {
-        
+       
     switch(true){
         case data.collection === 'authState' || data.collection.includes('authState'):
             return   { error: true, message: null, key: data.key };
@@ -350,6 +379,10 @@ export default class CrudManager {
        let idFromToken = this.tokenManager.decode(data.token).id;
        
       
+        console.log(data)
+        if(this.Cache.tableExists(data.collection) && data.cacheKey){ 
+           this.Cache.clear(data.collection, data.cacheKey)
+       } 
 
         let res = await this.pb.admins.client.collection(data.collection).update(data.id,   data.data)
         if(data.collection === 'users' && idFromToken !== data.id

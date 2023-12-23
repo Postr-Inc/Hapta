@@ -12,7 +12,7 @@ export default class AuthSate{
     }
 
    public async authUpdate(data: any){
-    console.log(data)
+   
         switch(true){
             case !data.token:
                 return {
@@ -113,8 +113,7 @@ export default class AuthSate{
     
 
              
-      } catch (error) {
-        console.log(error)
+      } catch (error) { 
      
         msg({type:'oauth', key:'oauth', error: true, message: error.message, session:  data.session})
         

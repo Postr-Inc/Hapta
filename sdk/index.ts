@@ -1,3 +1,4 @@
+//@ts-nocheck
 "use client";
 import { isTokenExpired } from "./jwt/index"
 import { useCallback, useEffect, useState } from "react";
