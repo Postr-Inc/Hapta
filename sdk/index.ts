@@ -66,9 +66,10 @@ export  default class postrSdk {
     private sendMessage: (e: any) => void
     private callbacks: Map<string, any>
     private isStandalone: boolean
-   
+    onlineEvent: CustomEvent
     changeEvent: CustomEvent
     cancellation: any
+    online: Map<string, any>
     sessionID: string
     pbUrl: string
     currType: string
@@ -103,8 +104,16 @@ export  default class postrSdk {
  
         this.ws.onopen = () => {
              this.ws.send(JSON.stringify({ type: "authSession", token: this.token, session: this.sessionID }))
+             
+        setInterval(() => {
+            if(this.authStore.isValid()) this.ws.send(JSON.stringify({ type: "ping", token: this.token, session: this.sessionID, time: Date.now()}));
+         }, 1000)
         }
 
+    
+        
+        this.online = new Map()
+        this.onlineEvent = new CustomEvent("online", { detail: { online: this.online } })
     }
     /**
      * @method upload
@@ -244,8 +253,8 @@ export  default class postrSdk {
 
                 if (data.error) throw new Error(data.error);
                 else if (data.clientData)  store.set("postr_auth",  JSON.stringify({ model: data.clientData, token: this.token }) || '{}');
-                console.log(data.clientData)
-                window.dispatchEvent(this.changeEvent)
+                  
+                
                 this.callbacks.delete('authUpdate');
             })
             this.sendMessage(JSON.stringify({ type: "authUpdate",token: this.token, data: { record: this.authStore.model(),  key: 'authUpdate' }, session: this.sessionID}))
@@ -443,12 +452,30 @@ export  default class postrSdk {
         })
 
     }
+
+
     private onmessage(e: any) {
         let data = JSON.parse(e.data)
+        
         if (this.callbacks.has(data.key)) {
             let func = this.callbacks.get(data.key)
 
             func(data.data ? data.data : data)
+        }else if (data.type === "status"){
+           data.data.forEach((d: any) => {
+          
+            this.online.set('online', d)
+            if(typeof window !== "undefined"){
+                window.dispatchEvent(this.onlineEvent)
+                console.log("online")
+            } 
+           })
+        }else if (data.type == "pong"){
+            let latency = Date.now() - data.time
+             this.online.set('latency', latency)
+                if(typeof window !== "undefined"){
+                    window.dispatchEvent(this.onlineEvent) 
+                }
         }
     }
 
@@ -487,7 +514,7 @@ export  default class postrSdk {
      * @returns  {Promise<any>}
      * @description Update a record in a collection
      */
-    public update(data: { id: string, collection: string, filter?: string, record: Object, sort?: string }) {
+    public update(data: { id: string, collection: string, filter?: string, record: Object, sort?: string, cacheKey?: string }) {
         
         return new Promise((resolve, reject) => {
             let key = crypto.randomUUID()
@@ -504,16 +531,16 @@ export  default class postrSdk {
 
 
 
-            this.sendMessage(JSON.stringify({ type: "update", key: key, data: data.record, collection: data.collection, sort: data.sort, filter: data.filter, token: this.token, id: data.id, session: this.sessionID }))
+            this.sendMessage(JSON.stringify({ type: "update", key: key, data: data.record, collection: data.collection, sort: data.sort, filter: data.filter, token: this.token, id: data.id, session: this.sessionID, cacheKey: data.cacheKey || null }))
         })
-    }
+    } 
     /**
      * @method list
      * @param data
      * @returns  {Promise<any>}
      * @description List records from a collection
      */
-    public list(data: { collection: string, filter?: string, sort?: string, limit?: number, page?: number, returnable?: Array<string>, expand?: Array<string> }) {
+    public list(data: { collection: string, filter?: string, sort?: string, limit?: number, page?: number, returnable?: Array<string>, expand?: Array<string> , cacheKey?: string, cacheTime?: number}) {
         return new Promise((resolve, reject) => {
             let key = crypto.randomUUID();
             this.currType = "list"
@@ -526,6 +553,7 @@ export  default class postrSdk {
                 this.callbacks.delete(key);
             });
     
+            console.log(data)
             this.sendMessage(JSON.stringify({
                     type: "list", 
                     key: key, 
@@ -535,6 +563,8 @@ export  default class postrSdk {
                     collection: data.collection,
                     sort: data.sort,
                     filter: data.filter,
+                    cacheKey: data.cacheKey || null,
+                    cacheTime: data.cacheTime || null,
                     limit: data.limit,
                     offset: data.page,
                     id: this.authStore.model()?.id || null,
@@ -554,7 +584,7 @@ export  default class postrSdk {
      * @returns  {Promise<any>}
      * @description Delete a record from a collection
      */
-    public delete(data: { id: string, collection: string, filter?: string }) {
+    public delete(data: { id: string, collection: string, filter?: string, cacheKey?: string }) {
         return new Promise((resolve, reject) => {
             let key = crypto.randomUUID()
             !data.collection ? (reject(new Error("collection is required"))) : null
@@ -564,7 +594,7 @@ export  default class postrSdk {
                 resolve(data)
             })
 
-            this.sendMessage(JSON.stringify({ type: "delete", key: key, collection: data.collection, ownership:this.authStore.model().id, filter: data.filter, token: this.token, id: data.id || null , session: this.sessionID}))
+            this.sendMessage(JSON.stringify({ type: "delete", key: key, collection: data.collection, ownership:this.authStore.model().id, filter: data.filter, token: this.token, id: data.id || null , session: this.sessionID, cacheKey: data.cacheKey || null}))
         })
     }
     /**
@@ -573,7 +603,7 @@ export  default class postrSdk {
      * @returns  {Promise<any>}
      * @description Create a record in a collection
      */
-    public create(data: { collection: string, record: object, expand: Array<string> }) {
+    public create(data: { collection: string, record: object, expand: Array<string>, cacheKey?: string }) {
         
         return new Promise((resolve, reject) => {
             let key = crypto.randomUUID()
@@ -589,14 +619,14 @@ export  default class postrSdk {
 
             this.sendMessage(JSON.stringify({ method: "create", type: "create", key: key,  
             expand: data.expand,
-            record: data.record, collection: data.collection, token: this.token || null, id: this.authStore.model().id || null, session: this.sessionID }))
+            record: data.record, collection: data.collection, token: this.token || null, id: this.authStore.model().id || null, session: this.sessionID, cacheKey: data.cacheKey || null }))
         } )
     }
 
     public on(data:{event: string, id:string, collection: string}, callback: Function) {
       
         let key =  crypto.randomUUID()
-        if (!event) {
+        if (!data.event) {
             throw new Error("event is required")
         }
         !data.collection ? (new Error("collection is required")) : null

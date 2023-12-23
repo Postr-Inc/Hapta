@@ -298,7 +298,6 @@ export default class CrudManager {
                 }): null
                  
                 if(this.Cache.tableExists(data.collection) && data.cacheKey){ 
-                  console.log('clearing cache')
                   this.Cache.clear(data.collection, data.cacheKey)
                 }
                 
@@ -418,6 +417,9 @@ async delete(data: any) {
           return { error: true, message: 'You are not authorized to perform this action', key: data.key };
       default:
           try {
+               if(this.Cache.tableExists(data.collection) && data.cacheKey){ 
+                  this.Cache.clear(data.collection, data.cacheKey)
+               }
                let res = await this.pb.admins.client.collection(data.collection).delete(data.id)
                this.evt.emit('delete', {collection: data.collection, record: res, action: 'delete'})
               return { error: false, key: data.key, data: res, session: data.session }

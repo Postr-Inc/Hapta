@@ -11,6 +11,8 @@ let args = process.argv.slice(2);
 let port = process.env.PORT || 8080;
 import config from "./config.json" with {type: "json"};
 
+let load = new Map();
+
 switch (true) {
   case !process.env.DB_URL:
     console.log("Please set the DB_URL environment variable");
@@ -24,7 +26,24 @@ switch (true) {
     break;
 }
 
-export let pb = new Pocketbase(process.env.DB_URL || "");
+
+export let pb: any = null
+
+function loadPocketbase(url: string){
+   try {
+    pb = new Pocketbase(url);
+   } catch (error) {
+      console.log("Failed to load pocketbase", error);
+      process.exit(1);
+   }
+}
+
+try{
+  loadPocketbase(process.env.DB_URL);
+}catch(e){
+  //@ts-ignore
+  loadPocketbase(process.env.Backup_DB_URL);
+}
 
 pb.admins.client.autoCancellation(false);
 
@@ -41,7 +60,7 @@ let ws = null;
 let reqHandler = new RequestHandler(ws, pb, config);
 
 const logMemory = () => {
-  const ramUsage = process.memoryUsage();
+  const ramUsage: any = process.memoryUsage();
   for (const key in ramUsage) {
     console.log(`${key}: ${ramUsage[key] / 1024 / 1024} MB \n`);
   }
@@ -66,7 +85,8 @@ export const server = Bun.serve({
 
     logRequest(`${req.method} ${req.url}`);
     // handle HTTP request normally
-    globalThis.req = req;
+    //@ts-ignore
+    globalThis.req= req;
     return new Response("Hello world!");
   },
   websocket: {
@@ -74,7 +94,7 @@ export const server = Bun.serve({
       reqHandler.ws = () => ws;
       reqHandler.handleStatuses(); 
     },
-    async message(ws, message) {
+    async message(ws, message: any) {
       reqHandler.ws = () => ws;
       let data = JSON.parse(message);
       if (data.type === 'authSession') {

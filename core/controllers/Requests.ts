@@ -39,7 +39,7 @@ export default class RequestHandler {
     this.TokenManager = new TokenManager(this.pb);
     this.authState = new AuthSate(this.pb, this.TokenManager);
     this.crudManager = new CrudManager(this.pb, this.Config, this.TokenManager);
- 
+    
     
   }
 
