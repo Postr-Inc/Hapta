@@ -378,8 +378,7 @@ export default class CrudManager {
 
        let idFromToken = this.tokenManager.decode(data.token).id;
        
-      
-        console.log(data)
+       
         if(this.Cache.tableExists(data.collection) && data.cacheKey){ 
            this.Cache.clear(data.collection, data.cacheKey)
        } 
