@@ -1,3 +1,4 @@
+//@ts-nocheck
 var atobPolyfill:Function;
 
 if (typeof atob === 'function') {

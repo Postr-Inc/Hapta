@@ -3,6 +3,7 @@ import { TokenManager } from "../utils/jwt/JWT";
 import AuthSate from "./AuthState";
  
 import CrudManager from "./CrudManager";
+import { ErrorCodes, ErrorHandler } from "./ErrorHandler";
 export default class RequestHandler {
   ws: any;
   sendMsg: any;
@@ -40,7 +41,7 @@ export default class RequestHandler {
     this.authState = new AuthSate(this.pb, this.TokenManager);
     this.crudManager = new CrudManager(this.pb, this.Config, this.TokenManager);
     
-    
+    this.handleStatuses()
   }
 
   public addLimits() {
@@ -88,7 +89,9 @@ export default class RequestHandler {
   
     
   
-      this.ws().send(JSON.stringify({ type: "status", data: Array.from(this.isOnline.values()) }));
+      if(this.ws()){
+        this.ws().send(JSON.stringify({ type: "status", data: Array.from(this.isOnline.values()) }));
+      }
    
       setTimeout(updateStatus, pingInterval);
     };
@@ -192,7 +195,7 @@ export default class RequestHandler {
       if (!this.TokenManager.isValid(msg.token, true)) return this.sendMsg({ error: true, message: "Invalid token" , session: msg.session});
       this.updateTokenUsage(msg.token, msg.type);
       await this.waitForRateLimit(msg.token || msg.data?.token, msg.type);
-    } 
+    }  
 
    
 
@@ -202,7 +205,7 @@ export default class RequestHandler {
         break;
       case "isRatelimited":
         !msg.method
-          ? this.sendMsg({ error: true, message: "method is required" })
+          ? this.sendMsg({...new ErrorHandler(null).handle({code:  ErrorCodes.FIELD_MISSING}), key: msg.key, session: msg.session, missing: 'method'})
           : this.sendMsg({
               error: false,
               ratelimited: this.isRatelimited(msg.token, msg.method),
@@ -217,7 +220,7 @@ export default class RequestHandler {
         break;
       case "ping":
         let time = Date.now()
-        if(!msg.session || !msg.token) return this.sendMsg({error: true, message: "session and token are required"})
+        if(!msg.session || !msg.token) return this.sendMsg({...new ErrorHandler(msg).handle({code:  ErrorCodes.FIELD_MISSING}), key: msg.key, session: msg.session, missing: 'session or token'})
         let id = this.TokenManager.decode(msg.token).id
         this.isOnline.set(id, {time: time, userID: id})
         this.sendMsg({ key: msg.key, time: time, session: msg.session, type: "pong", latency: Date.now() - time });
@@ -241,12 +244,7 @@ export default class RequestHandler {
         this.sendMsg(await this.crudManager.list(msg));
 
         break;
-      case "subscribe":
-        this.crudManager.subscribe(msg, this.sendMsg);
-        break;
-      case "unsubscribe":
-        this.crudManager.unsubscribe(msg);
-        break;
+      
       case "delete":
         this.sendMsg(await this.crudManager.delete(msg));
         break;
@@ -256,19 +254,15 @@ export default class RequestHandler {
       case "create":
         this.sendMsg(await this.crudManager.create(msg));
         break;
-      case "getUserByUsername":
-        let { username } = msg.data;
-        let res = await this.crudManager.read({
-          collection: "users",
-          filter: `username = "${username}"`,
-        });
+      case "read":
+        this.sendMsg(await this.crudManager.read(msg));
         break;
-      
+     
       case "checkUsername":
         this.sendMsg({key: msg.key, error:false, message:await this.authState.checkUsername(msg.data.username)});
         break;
       default: 
-      
+        this.sendMsg({...new ErrorHandler(msg || null).handle({code:  ErrorCodes.INVALID_REQUEST}), key: msg.key, session: msg.session})
         break;
     }
   }

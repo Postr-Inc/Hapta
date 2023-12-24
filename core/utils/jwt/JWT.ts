@@ -1,11 +1,12 @@
 //@ts-nocheck
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
- 
+import { ErrorHandler } from '../../controllers/ErrorHandler';
+import Pocketbase from 'pocketbase';
  
 export class TokenManager{
     serverKeys: any
-    pb: any
+    pb: Pocketbase
     devKeys: any
     clientKeys: Map<string, any>
     constructor(Pocketbase){
@@ -43,7 +44,7 @@ export class TokenManager{
     }
 
     /**
-     * @description Generates a signing key for a user
+     * @description Generates a signing key for a user or developer and stores in the database
      * @param Uid 
      * @param client 
      * @returns 
@@ -58,12 +59,16 @@ export class TokenManager{
                 client ? this.clientKeys.set(Uid, {key: randomKey, id: this.clientKeys.get(Uid).id}) : this.devKeys.set(Uid, {key: randomKey, id: this.devKeys.get(Uid).id})
                 return randomKey
             } catch (error) {
-                console.log(error)
+                new ErrorHandler(null).handle({code:  201})
                 return null
             }
         }
+      try {
         let res =  await this.pb.admins.client.collection(client ? 'authState': 'devAuthState').create({User: Uid, signing_key: randomKey})
         client ? this.clientKeys.set(Uid, {key: randomKey, id: res.id}) : this.devKeys.set(Uid, {key: randomKey, id: res.id})
+      } catch (error) {
+         new ErrorHandler(null).handle({code:  201})
+      }
         return randomKey
     }
 

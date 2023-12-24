@@ -2,6 +2,7 @@
 
 import { pb } from "../../server";
 import { TokenManager } from "../utils/jwt/JWT";
+import { ErrorCodes, ErrorHandler } from "./ErrorHandler";
 
 export default class AuthSate{
     pb: any;
@@ -20,15 +21,9 @@ export default class AuthSate{
                     message: 'token is required'
                 }
             case !this.tokenManager.isValid(data.token, true) || this.tokenManager.decode(data.token).id !== data.data.record.id:
-                return {
-                    error: true,
-                    message: 'You are not authorized to perform this action'
-                }
+                return {...new ErrorHandler(null).handle({code: ErrorCodes.INVALID_TOKEN}), key: data.key, session: data.session}
             case !data.data.record:
-                return {
-                    error: true,
-                    message: 'auth record is required'
-                }
+                 return {...new ErrorHandler(null).handle({code: ErrorCodes.FIELD_MISSING}), key: data.key, session: data.session, missing: 'record'}
             default:
          
               
@@ -41,7 +36,7 @@ export default class AuthSate{
         
                 } catch (error) {
        
-                    return {error: true, message: error.message, key: data.key, session: data.session}
+                    return {...new ErrorHandler(error).handle({code: ErrorCodes.AUTHORIZATION_FAILED}), key: data.key, session: data.session}
                 }
           }
     
@@ -115,7 +110,7 @@ export default class AuthSate{
              
       } catch (error) { 
      
-        msg({type:'oauth', key:'oauth', error: true, message: error.message, session:  data.session})
+        msg({...new ErrorHandler(error).handle({code:  ErrorCodes.AUTHORIZATION_FAILED}), session: session, key: 'oauth'})
         
         
       }

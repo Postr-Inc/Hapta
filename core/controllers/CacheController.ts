@@ -1,5 +1,8 @@
 import { Database } from "bun:sqlite";
-
+/**
+ * @class CacheController
+ * @description Haptas Cache Controller for storing and retrieving data from the cache based on sqlite
+ */
 export default class CacheController {
   db: Database;
   constructor() {

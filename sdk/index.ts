@@ -1,8 +1,6 @@
 //@ts-nocheck
 "use client";
-import { isTokenExpired } from "./jwt/index"
-import { useCallback, useEffect, useState } from "react";
-
+import { isTokenExpired } from "./jwt/index" 
 const store = {
     get: (key: string) => {
         if (typeof window == "undefined") return;
@@ -23,19 +21,16 @@ const store = {
         return localStorage.clear()
     }
 }
+ 
 interface authStore {
     model: {
         id: string
         avatar: string,
         username: string,
         created: string,
-        bio: string,
         updated: string,
-        bookmarks: Array<string>,
-        followers: Array<string>,
-        token: string,
-        postr_plus: boolean,
-        validVerified: boolean,
+
+        token: string, 
     }
     onChange: Function
     update: Function
@@ -45,6 +40,9 @@ interface authStore {
     isRatelimited: Function;
     global: any
 }
+
+ 
+
 
 interface isRatelimited {
     limit: number
@@ -60,8 +58,7 @@ interface isRatelimited {
  */
 
 
-export  default class postrSdk {
-    private type: string
+export  default class postrSdk { 
     private ws: WebSocket
     private sendMessage: (e: any) => void
     private callbacks: Map<string, any>
@@ -73,14 +70,13 @@ export  default class postrSdk {
     sessionID: string
     pbUrl: string
     currType: string
-    $memoryCache: Map<string, any>
+    private $memoryCache: Map<string, any>
     token: string
-    constructor(data:{wsUrl: string, pbUrl: string, cancellation: any}) {
+    constructor(data:{wsUrl: string, wsAuthUrl: string, pbUrl: string, cancellation: any}) {
          
         this.sessionID = crypto.randomUUID()
-        this.isStandalone = false
-        typeof window == "undefined" ? this.type = "server" : this.type = "client"
-        this.ws = new WebSocket(data.wsUrl.includes("localhost") ? "ws://" + data.wsUrl : "wss://" + data.wsUrl)
+        this.isStandalone = false 
+        this.ws = new WebSocket(`ws://${data.wsUrl}`)
         this.$memoryCache = new Map()
         this.token = JSON.parse(store.get("postr_auth") || '{}') ? JSON.parse(store.get("postr_auth") || '{}').token : null
         /**
@@ -272,11 +268,22 @@ export  default class postrSdk {
             })
 
         },
+        /**
+         * @method isValid
+         * @description Check if the current token is valid
+         * @returns 
+         */
         isValid: () => isTokenExpired(store.get("postr_auth") ? JSON.parse((store.get("postr_auth")|| '{}')).token : null,  0),
         img: () => {
             if (typeof window == "undefined") return;
              return `${this.pbUrl}/api/files/users/${this.authStore.model().id}/${this.authStore.model().avatar}`
         },
+        /**
+         * @method isRatelimited
+         * @description Check if the current token is ratelimited
+         * @param type 
+         * @returns 
+         */
         isRatelimited: (type: string): Promise<isRatelimited> => {
             return new Promise((resolve, reject) => {
             this.callbacks.set('isRatelimited', (data: any) => {
@@ -456,25 +463,32 @@ export  default class postrSdk {
 
     private onmessage(e: any) {
         let data = JSON.parse(e.data)
-        
+      
         if (this.callbacks.has(data.key)) {
             let func = this.callbacks.get(data.key)
 
             func(data.data ? data.data : data)
         }else if (data.type === "status"){
            data.data.forEach((d: any) => {
-          
+           
             this.online.set('online', d)
             if(typeof window !== "undefined"){
-                window.dispatchEvent(this.onlineEvent)
-                console.log("online")
+                let timer = setTimeout(() => {
+                    window.dispatchEvent(this.onlineEvent)
+                    clearTimeout(timer)
+                }, 1000)    
+               
             } 
            })
         }else if (data.type == "pong"){
             let latency = Date.now() - data.time
+           
              this.online.set('latency', latency)
                 if(typeof window !== "undefined"){
-                    window.dispatchEvent(this.onlineEvent) 
+                    let timer = setTimeout(() => {
+                        window.dispatchEvent(this.onlineEvent)
+                        clearTimeout(timer)
+                    }, 1000)    
                 }
         }
     }
@@ -486,7 +500,7 @@ export  default class postrSdk {
      * @description Read a record from a collection
      */
 
-    public read(data: { id: string, collection: string, returnable?: Array<string>, expand: Array<string> }) {
+    public read(data: { id: string, collection: string, returnable?: Array<string>, expand?: Array<string>, authKey?: string }) {
         return new Promise((resolve, reject) => {
             let key = crypto.randomUUID();
             !data.collection ? (reject(new Error("collection is required"))) : null;
@@ -502,7 +516,8 @@ export  default class postrSdk {
             });
     
             this.sendMessage(JSON.stringify({
-                type: "read", key: key, collection: data.collection, token: this.token, id: data.id, returnable: data.returnable, expand: data.expand, session: this.sessionID
+                type: "read", key: key, collection: data.collection, token: this.token, id: data.id, returnable: data.returnable, expand: data.expand, session: this.sessionID,
+                authKey: data.authKey || null
             }));
      
         });
@@ -514,7 +529,7 @@ export  default class postrSdk {
      * @returns  {Promise<any>}
      * @description Update a record in a collection
      */
-    public update(data: { id: string, collection: string, filter?: string, record: Object, sort?: string, cacheKey?: string }) {
+    public update(data: { id: string, collection: string, filter?: string, record: Object, sort?: string, expand?: Array<string>, cacheKey?: string }) {
         
         return new Promise((resolve, reject) => {
             let key = crypto.randomUUID()
@@ -531,7 +546,7 @@ export  default class postrSdk {
 
 
 
-            this.sendMessage(JSON.stringify({ type: "update", key: key, data: data.record, collection: data.collection, sort: data.sort, filter: data.filter, token: this.token, id: data.id, session: this.sessionID, cacheKey: data.cacheKey || null }))
+            this.sendMessage(JSON.stringify({ type: "update", key: key, data: data.record, expand:data.expand, collection: data.collection, sort: data.sort, filter: data.filter, token: this.token, id: data.id, session: this.sessionID, cacheKey: data.cacheKey || null }))
         })
     } 
     /**
@@ -626,7 +641,7 @@ export  default class postrSdk {
     public on(data:{event: string, id:string, collection: string}, callback: Function) {
       
         let key =  crypto.randomUUID()
-        if (!data.event) {
+        if (!event) {
             throw new Error("event is required")
         }
         !data.collection ? (new Error("collection is required")) : null
