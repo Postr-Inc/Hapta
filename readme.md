@@ -7,10 +7,11 @@ What is hapta? - hapta is a backend websocket server layer for pocketbase, it he
     - This prevents users from creating records outside of the app itself, allowing better monitoring.
 3. Oauth2 gateway streaming
 4. Ratelimiting - this is not built into pocketbase directly - it only limits per request action up to a specific cancellation threshold which is not feasible for 10's of thousands of users
-5. Request validation - requests such as update requests to user records is validated to ensure the user matches who they say they are and if they are valid to change the data
+5. Request validation - create custom validation code to validate the record before sent to client or database
 6. File upload handling through websocket stream - and file download handling 
 7. Subscription based sessions - used to randomize sessions per user so no user can grab ones data
 8. Sqlite memory cache with bun - less round trips to the database, hapta client cache using sdk
+9. 
 # Installation
 > **Stop** If you do not know how to use [pocketbase](https://pocketbase.io/docs)
 
@@ -23,9 +24,6 @@ PORT=
 DB_URL=http://127.0.0.1:8090
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
-REDIS_HOST=
-REDIS_PORT=
-REDIS_PASSWORD=
 ```
 Create a config.ts file and paste the following
 
@@ -78,7 +76,7 @@ export default {
 }
 
 ```
-rules.ts is a service worker file used for record validation
+You can write a rules entry file to validate all records before and or after they are returned to db/user
 
 ```ts
 
