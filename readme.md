@@ -78,7 +78,7 @@ export default {
 }
 
 ```
-rules.ts is a service worker file used for record validation
+You can write a rules entry file to validate all records before and or after they are returned to db/user
 
 ```ts
 
