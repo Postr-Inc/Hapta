@@ -72,7 +72,7 @@ export default class AuthSate{
         
     let session = data.session
     data = data.data
- 
+
     try {
         let res  = await pb.admins.client.collection('users').authWithOAuth2({
             provider: data.provider,
@@ -81,7 +81,7 @@ export default class AuthSate{
              followers: [],
              following: [],
             },
-            redirectUrl: data.redirect_uri,
+            redirectUrl: data.redirectUrl,
             urlCallback: (url) => {
                
                msg({
@@ -119,7 +119,7 @@ export default class AuthSate{
 
     async checkUsername(username: string){
         try {
-            let res = await pb.admins.client.collection('users').getFirstListItem(`username="${username}"`)
+            let res = await pb.admins.client.collection('users').getFirstListItem(`username = "${username}"`)
             return res ? true : false
         } catch (error) {
             return false

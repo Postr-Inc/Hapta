@@ -37,7 +37,7 @@ try {
     await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
     console.log("Authentication successful")
 } catch (error) {
-    throw new Error(new ErrorHandler(null).handle({code: ErrorCodes.AUTHORIZATION_FAILED}).message) 
+    throw new Error(new ErrorHandler({type:'oauth'}).handle({code: ErrorCodes.AUTHORIZATION_FAILED}).message) 
 }
 
 
@@ -49,6 +49,10 @@ export const server =  Bun.serve({
     development: config.developmentMode || true,
     fetch(req: any, server: any) {
       const success = server.upgrade(req);
+      if(req.url === '/oauth'){
+        let body = JSON.parse(req.body)
+        console.log(body)
+      }
       if (success) {
         // Bun automatically returns a 101 Switching Protocols
         // if the upgrade succeeds

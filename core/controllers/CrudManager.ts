@@ -207,10 +207,9 @@ export default class CrudManager {
             session: data.session,
           };
         } catch (error) {
-          console.log(error);
+          console.log(error.data)
           return {
-            error: true,
-            message: error.message,
+            ...new ErrorHandler(data).handle({ code: ErrorCodes.INVALID_REQUEST }),
             key: data.key,
             session: data.session,
           };
@@ -391,12 +390,34 @@ export default class CrudManager {
           if (this.Cache.tableExists(data.collection) && data.cacheKey) {
             this.Cache.clear(data.collection, data.cacheKey);
           }
+          for (var i in  data.record) {
+            if (data.record[i].isFile && data.record[i].file) {
+              let files: any  = []
+              if(Array.isArray(data.record[i].file)){ 
+                 data.record[i].file.forEach((file:any)=>{
+                  const array = new Uint8Array(file);
+                  const blob = new Blob([array], { type: file.type });
+                  file = new File([blob], file.name, {
+                    type: file.type,
+                  });
 
-          let res = await this.pb.admins.client
-            .collection(data.collection)
-            .create(data.record, {
-              expand: expand || "",
-            });
+                  files.push(file)
+
+                 }) 
+                 data.record[i] = files
+              }else{
+                const array = new Uint8Array(data.record[i].file);
+                const blob = new Blob([array], { type: data.record[i].type });
+                data.record[i] = Array.from( new File([blob], data.record[i].name, {
+                  type: data.record[i].type
+                }))
+              }
+              
+            }  
+          }
+    
+
+          let res = await this.pb.admins.client.collection(data.collection).create(data.record, {expand: expand || ""});
           this.evt.emit("create", {
             collection: data.collection,
             record: res,
