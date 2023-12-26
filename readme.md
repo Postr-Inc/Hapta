@@ -78,6 +78,73 @@ export default {
 }
 
 ```
+rules.ts is a service worker file used for record validation
+
+```ts
+
+console.log('worker started');
+
+declare var self: Worker;
+declare var TokenManager: globalThis.TokenManager;
+declare var ErrorCodes: globalThis.ErrorCodes
+
+self.onmessage = (event: MessageEvent) => {
+    const { type, data, id, token } = event.data.record;
+
+     
+    const checkOwnership = () => {
+        const authID = TokenManager.decode(token).id;
+
+        if (authID !== id) {
+            self.postMessage({ error: true, code: ErrorCodes.OWNERSHIP_REQUIRED });
+            return false;
+        }
+        return true;
+    };
+
+    switch (type) {
+        case 'update':
+            try {
+                if (!checkOwnership()) return;
+
+                if (data.collection === "users" && TokenManager.decode(token).id  == id) {
+                    
+                        const cannotUpdate = ['validVerified', 'postr_plus', 'followers', 'postr_subscriber_since'];
+                         
+    
+                        for (const key in data.record) {
+                            if (cannotUpdate.includes(key)) {
+                                self.postMessage({ error: true, code: ErrorCodes.OWNERSHIP_REQUIRED });
+                                return;
+                            }
+                        }
+    
+                    
+                }else{
+                    const others = ['username', 'email', 'verified', 'validVerified', 'postr_plus', 'following', 'bio', 'postr_subscriber_since'];
+                    for (const key in data.record) {
+                        if (!others.includes(key)) {
+                            self.postMessage({ error: true, code: ErrorCodes.OWNERSHIP_REQUIRED });
+                            return;
+                        }
+                    }
+                }
+    
+                self.postMessage({ error: false, message: 'success' });
+            } catch (error) {
+                console.log(error);
+            }
+            break;
+
+        case 'delete':
+            if (!checkTokenValidity() || !checkOwnership()) return;
+
+            self.postMessage({ error: false, message: 'success' });
+            break;
+    }
+};
+
+```
 ```bash
 bun run ./server.ts
 ```
