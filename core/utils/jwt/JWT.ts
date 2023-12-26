@@ -1,7 +1,7 @@
 //@ts-nocheck
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { ErrorHandler } from '../../controllers/ErrorHandler';
+import { ErrorCodes, ErrorHandler } from '../../controllers/ErrorHandler';
 import Pocketbase from 'pocketbase';
  
 export class TokenManager{
@@ -18,17 +18,22 @@ export class TokenManager{
 
     async startUp(){
          
-        this.pb.admins.client.collection('authState').getFullList().then((res)=>{
-            res.forEach((d)=>{
-                this.clientKeys.set(d.User, {key: d.signing_key, id: d.id})
+        
+         try {
+            this.pb.admins.client.collection('authState').getFullList().then((res)=>{
+                res.forEach((d)=>{
+                    this.clientKeys.set(d.User, {key: d.signing_key, id: d.id})
+                })
             })
-        })
-
-        this.pb.admins.client.collection('devAuthState').getFullList().then((res)=>{
-            res.forEach((d)=>{
-                this.devKeys.set(d.dev, {key: d.signing_key, id: d.id})
+    
+            this.pb.admins.client.collection('devAuthState').getFullList().then((res)=>{
+                res.forEach((d)=>{
+                    this.devKeys.set(d.dev, {key: d.signing_key, id: d.id})
+                })
             })
-        })
+         } catch (error) {
+             throw new ErrorHandler(error).handle({code:  ErrorCodes.MISSING_AUTH_STATE_RECORDS})
+         }
  
        
     }
@@ -59,15 +64,15 @@ export class TokenManager{
                 client ? this.clientKeys.set(Uid, {key: randomKey, id: this.clientKeys.get(Uid).id}) : this.devKeys.set(Uid, {key: randomKey, id: this.devKeys.get(Uid).id})
                 return randomKey
             } catch (error) {
-                new ErrorHandler(null).handle({code:  201})
-                return null
+                 
+                return new ErrorHandler(error).handle({code:  ErrorCodes.AUTHKEYGENERATION_FAILED})
             }
         }
       try {
         let res =  await this.pb.admins.client.collection(client ? 'authState': 'devAuthState').create({User: Uid, signing_key: randomKey})
         client ? this.clientKeys.set(Uid, {key: randomKey, id: res.id}) : this.devKeys.set(Uid, {key: randomKey, id: res.id})
       } catch (error) {
-         new ErrorHandler(null).handle({code:  201})
+        return new ErrorHandler(error).handle({code:  ErrorCodes.AUTHKEYGENERATION_FAILED})
       }
         return randomKey
     }

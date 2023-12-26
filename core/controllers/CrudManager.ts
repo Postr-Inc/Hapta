@@ -5,6 +5,9 @@ import EventEmitter from "events";
 import CacheController from "./CacheController";
 import { ErrorCodes, ErrorHandler } from "./ErrorHandler";
 import Pocketbase from "pocketbase";
+let config = await import(process.cwd() + "/config.ts").then(
+  (res) => res.default
+);
 export default class CrudManager {
   pb: Pocketbase;
   Config: any;
@@ -19,6 +22,7 @@ export default class CrudManager {
     this.subscriptions = new Map();
     this.evt = new EventEmitter();
     this.Cache = new CacheController();
+    this.worker =  config.rules ? new Worker(new URL(process.cwd() + config.rules, import.meta.url)) : null 
   }
   async list(data: any) {
     let {
@@ -110,8 +114,7 @@ export default class CrudManager {
               filter ? filter.replace(/ /g, "") : ""
             }_${sort ? sort.replace(/ /g, "") : ""}_${
               expansion ? expansion.replace(/ /g, "") : ""
-            }`;
-          console.log(cacheKey);
+            }`; 
 
           if (
             this.Cache.tableExists(collection) &&
@@ -298,7 +301,6 @@ export default class CrudManager {
             }
             newRecord[key] = res[key];
           });
-
           switch (true) {
             case !this.Cache.tableExists(data.collection):
               this.Cache.createTable(data.collection);
@@ -417,6 +419,19 @@ export default class CrudManager {
         }
     }
   }
+
+
+  parseRules(rules:any){
+    let rule =  new URLSearchParams(rules)
+    let ruleKeys = [...rule.keys()]
+    let ruleValues = [...rule.values()]
+    let ruleObj:any = {}
+    ruleKeys.forEach((key, index)=>{
+      ruleObj[key] = ruleValues[index]
+    })
+    return ruleObj
+  }
+   
   async update(data: any) {
     switch (true) {
       case data.collection === "authState" ||
@@ -459,34 +474,23 @@ export default class CrudManager {
           key: data.key,
           session: data.session,
         };
+      
 
-      default:
-        let idFromToken = this.tokenManager.decode(data.token).id;
-        console.log(idFromToken, data.id);
-        if (data.collection === "users" && idFromToken !== data.id) {
-          let col = this.Config.cannotUpdate[data.collection]["others"];
-          for (let i in col) {
-            if (data.data[col[i]]) {
-              return {
-                error: true,
-                message: `You are not authorized to update ${col[i]}`,
-                key: data.key,
-              };
-            }
-          }
-        } else if (data.collection === "users" && idFromToken === data.id) {
-          let col = this.Config.cannotUpdate[data.collection]["self"];
-          for (let i in col) {
-            if (data.data[col[i]]) {
-              return {
-                error: true,
-                message: `You are not authorized to update ${col[i]}`,
-                key: data.key,
-              };
-            }
-          }
+       
+    } 
+
+    if(this.worker){
+ 
+      
+      this.worker.postMessage({record:data})
+      this.worker.onmessage = (e:any) => {
+        let res = e.data
+        if(res.error){
+         return  {...new ErrorHandler(res).handle({code: res.code || ErrorCodes.UPDATE_FAILED}) , key: data.key, session: data.session}
         }
-        break;
+      }; 
+    }else{
+      console.log(`⚠️ No  rule file found  all connections are vulnerable to attacks without validation!`)
     }
 
     try {
@@ -511,6 +515,7 @@ export default class CrudManager {
       if (this.Cache.tableExists(data.collection) && data.cacheKey) {
         this.Cache.clear(data.collection, data.cacheKey);
       }
+ 
 
       let expand = "";
       data.expand
@@ -520,7 +525,7 @@ export default class CrudManager {
         : null;
       let res = await this.pb.admins.client
         .collection(data.collection)
-        .update(data.id, data.data, { expand: expand || "" });
+        .update(data.id, data.data, { expand: expand || "",});
       if (
         data.collection === "users" &&
         idFromToken !== data.id &&
@@ -528,8 +533,7 @@ export default class CrudManager {
       ) {
         delete res.email;
       }
-
-      console.log(res);
+ 
 
       this.evt.emit("update", {
         collection: data.collection,

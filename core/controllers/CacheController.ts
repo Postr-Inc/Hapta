@@ -106,6 +106,7 @@ export default class CacheController {
       this.db.run(
         `INSERT INTO ${collection} (key, data, ttl) VALUES ('${key}', '${data}', '${ttl}')`
       );
+      this.removeExpired(collection)
     } catch (error) {
       console.log(error);
       return { error: true, message: error };
@@ -156,6 +157,9 @@ export default class CacheController {
     public async removeExpired(collection: string) {
         try {
             this.db.prepare(`DELETE FROM ${collection} WHERE ttl < ${Date.now()}`).run()
+            let timer = setTimeout(() => {
+                this.removeExpired(collection)
+            }, 20000) // run every 2 seconds
             return true
         } catch (error) {
             return false

@@ -181,7 +181,7 @@ export default class RequestHandler {
 
   public async handleRequest(msg: any) {
     msg = JSON.parse(msg);
-     
+    
     if (msg.server) this.isServer = true;
 
     if(!msg.session) return  
@@ -259,7 +259,7 @@ export default class RequestHandler {
         break;
      
       case "checkUsername":
-        this.sendMsg({key: msg.key, error:false, message:await this.authState.checkUsername(msg.data.username)});
+        this.sendMsg({key: msg.key, error:false, message:await this.authState.checkUsername(msg.data.username), session: msg.session})
         break;
       default: 
         this.sendMsg({...new ErrorHandler(msg || null).handle({code:  ErrorCodes.INVALID_REQUEST}), key: msg.key, session: msg.session})

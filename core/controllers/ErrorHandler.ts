@@ -109,6 +109,14 @@ export enum ErrorCodes {
      * @errorMessage {TYPEOF_FILTER_NOT_STRING} Filter must be a string
      */
     TYPEOF_FILTER_NOT_STRING = 1004,
+    /**
+     * @errorMessage {MISSING_AUTH_STATE_RECORDS} Missing auth state records
+     */
+    MISSING_AUTH_STATE_RECORDS = 1005,
+    /**
+     * @errorMessage {FAILED_ADMIN_AUTH} Failed to authenticate as admin
+     */
+    FAILED_ADMIN_AUTH = 1006,
 }
 
 let ErrorMessages  = {
@@ -135,6 +143,8 @@ let ErrorMessages  = {
     [ErrorCodes.TYPEOF_RETURNABLES_NOT_ARRAY]: "Returnable must be an array",
     [ErrorCodes.TYPE_MISMATCH]: "Expected type does not match actual type",
     [ErrorCodes.TYPEOF_FILTER_NOT_STRING]: "Filter must be a string",
+    [ErrorCodes.MISSING_AUTH_STATE_RECORDS]: "Please create authState and devAuthState collections in your database",
+    [ErrorCodes.FAILED_ADMIN_AUTH]: "Failed to authenticate as admin"
 
 }
 /**

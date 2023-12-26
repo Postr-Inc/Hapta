@@ -22,28 +22,6 @@ const store = {
     }
 }
  
-interface authStore {
-    model: {
-        id: string
-        avatar: string,
-        username: string,
-        created: string,
-        updated: string,
-
-        token: string, 
-    }
-    onChange: Function
-    update: Function
-    clear: Function
-    isValid:  Function
-    img: Function,
-    isRatelimited: Function;
-    global: any
-}
-
- 
-
-
 interface isRatelimited {
     limit: number
     duration: number

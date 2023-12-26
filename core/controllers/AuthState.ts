@@ -72,7 +72,7 @@ export default class AuthSate{
         
     let session = data.session
     data = data.data
-
+ 
     try {
         let res  = await pb.admins.client.collection('users').authWithOAuth2({
             provider: data.provider,
@@ -110,6 +110,7 @@ export default class AuthSate{
              
       } catch (error) { 
      
+        console.log(error)
         msg({...new ErrorHandler(error).handle({code:  ErrorCodes.AUTHORIZATION_FAILED}), session: session, key: 'oauth'})
         
         
@@ -118,7 +119,7 @@ export default class AuthSate{
 
     async checkUsername(username: string){
         try {
-            let res = await pb.admins.client.collection('users').getFirstListItem(`username = "${username}"`)
+            let res = await pb.admins.client.collection('users').getFirstListItem(`username="${username}"`)
             return res ? true : false
         } catch (error) {
             return false

@@ -1,11 +1,18 @@
 import RequestHandler from "./core/controllers/Requests";
 import Pocketbase from 'pocketbase'
+import fs from 'fs'
 let args = process.argv.slice(2);
 let port =  process.env.PORT || 8080;
-import config from "./config.json" with {type: "json"}
+if(!fs.existsSync(process.cwd() + '/config.ts')){
+    console.log("⛔ Please create a config.ts file in the root directory")
+    process.exit(1)
+}
+let config = await import(process.cwd() + '/config.ts').then((res) => res.default) 
+ 
 import eventsource from 'eventsource'
 import CrudManager from "./core/controllers/CrudManager";
 import { TokenManager } from "./core/utils/jwt/JWT";
+import { ErrorCodes, ErrorHandler } from "./core/controllers/ErrorHandler";
 globalThis.EventSource = eventsource as any;
 switch(true){
     case !process.env.DB_URL:
@@ -16,19 +23,21 @@ switch(true){
         console.log("Please set the ADMIN_EMAIL and ADMIN_PASSWORD environment variables")
         process.exit(1)
         break;
+    case !config.ratelimits:
+        console.log("Please set the ratelimits in your config file")
+        process.exit(1)
+        break;
     default:
         break;
 }
 export let pb  = new Pocketbase(process.env.DB_URL || "")
 
 pb.admins.client.autoCancellation(false)
-try {
-    console.log("Authenticating", process.env.ADMIN_EMAIL)
+try { 
     await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
     console.log("Authentication successful")
 } catch (error) {
-    console.log("Authentication failed", error)
-    process.exit(1)
+    throw new Error(new ErrorHandler(null).handle({code: ErrorCodes.AUTHORIZATION_FAILED}).message) 
 }
 
 
@@ -37,6 +46,7 @@ let reqHandler = new RequestHandler(ws,   pb,  config)
  
 export const server =  Bun.serve({
     port: port,
+    development: config.developmentMode || true,
     fetch(req: any, server: any) {
       const success = server.upgrade(req);
       if (success) {
