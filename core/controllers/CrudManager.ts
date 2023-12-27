@@ -717,7 +717,7 @@ export default class CrudManager {
 
       default:
         if (this.worker) {
-          await new promise((resolve, reject) => {
+          let promise = await new promise((resolve, reject) => {
             this.worker.postMessage({ record: data });
             this.worker.onmessage = (e: any) => {
               let res = e.data;
@@ -734,6 +734,7 @@ export default class CrudManager {
               resolve(res);
             };
           });
+          if (promise.error) return promise;
         }
         try {
           if (this.Cache.tableExists(data.collection) && data.cacheKey) {
