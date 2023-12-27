@@ -159,6 +159,7 @@ export default class CacheController {
             this.db.prepare(`DELETE FROM ${collection} WHERE ttl < ${Date.now()}`).run()
             let timer = setTimeout(() => {
                 this.removeExpired(collection)
+                clearTimeout(timer)
             }, 20000) // run every 2 seconds
             return true
         } catch (error) {

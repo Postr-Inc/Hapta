@@ -390,20 +390,38 @@ export default class CrudManager {
           if (this.Cache.tableExists(data.collection) && data.cacheKey) {
             this.Cache.clear(data.collection, data.cacheKey);
           }
+
+          function validateFiles(files: any) {
+            let valid = true;
+            files.forEach((file: any) => {
+              if (
+                !config.files.mimeTypes.includes(file.type) ||
+                file.size > config.files.maxFileSize
+              ) {
+                valid = false;
+              }
+            });
+            return valid;
+          }
           for (var i in  data.record) {
             if (data.record[i].isFile && data.record[i].file) {
               let files: any  = []
               if(Array.isArray(data.record[i].file)){ 
+                 let invalidFiles = []
                  data.record[i].file.forEach((file:any)=>{
                   const array = new Uint8Array(file);
                   const blob = new Blob([array], { type: file.type });
                   file = new File([blob], file.name, {
                     type: file.type,
                   });
+                  if(!validateFiles([file])) invalidFiles.push(file)
 
                   files.push(file)
+                   
 
                  }) 
+
+                 if(invalidFiles.length > 0) return {...new ErrorHandler(data).handle({code: ErrorCodes.INVALID_FILE_TYPE}), key: data.key, session: data.session, invalidFiles: invalidFiles, validFiles: files}
                  data.record[i] = files
               }else{
                 const array = new Uint8Array(data.record[i].file);
@@ -411,6 +429,8 @@ export default class CrudManager {
                 data.record[i] = Array.from( new File([blob], data.record[i].name, {
                   type: data.record[i].type
                 }))
+                if(!validateFiles(data.record[i])) return {...new ErrorHandler(data).handle({code: ErrorCodes.INVALID_FILE_TYPE}), key: data.key, session: data.session}
+                
               }
               
             }  

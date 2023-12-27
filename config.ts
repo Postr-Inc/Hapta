@@ -7,6 +7,11 @@ export default {
         hostname: "localhost",
         developmentMode: false 
     },
+    files:{
+        maxFileSize: 1800000, // 1.8MB
+        mimeTypes: [ 'image/gif', 'image/png', 'image/jpg', 'image/webp'],
+        maxUpload: 4
+    },
     ratelimits:{
         default:{
             limit: 10,

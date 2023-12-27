@@ -117,6 +117,10 @@ export enum ErrorCodes {
      * @errorMessage {FAILED_ADMIN_AUTH} Failed to authenticate as admin
      */
     FAILED_ADMIN_AUTH = 1006,
+    /**
+     * @errorMessage {INVALID_FILE_TYPE} Invalid file type
+     */
+    INVALID_FILE_TYPE = 1007,
 }
 
 let ErrorMessages  = {
@@ -144,7 +148,8 @@ let ErrorMessages  = {
     [ErrorCodes.TYPE_MISMATCH]: "Expected type does not match actual type",
     [ErrorCodes.TYPEOF_FILTER_NOT_STRING]: "Filter must be a string",
     [ErrorCodes.MISSING_AUTH_STATE_RECORDS]: "Please create authState and devAuthState collections in your database",
-    [ErrorCodes.FAILED_ADMIN_AUTH]: "Failed to authenticate as admin"
+    [ErrorCodes.FAILED_ADMIN_AUTH]: "Failed to authenticate as admin",
+    [ErrorCodes.INVALID_FILE_TYPE]: "File given is not a valid file type"
 
 }
 /**
