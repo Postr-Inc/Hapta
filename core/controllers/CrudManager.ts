@@ -409,7 +409,7 @@ export default class CrudManager {
             for (var i in data.data) {
               if (data.data[i].isFile && data.data[i].file ) {
                 let files = this.handleFiles(data.data[i].file) 
-                if(files){
+                if(files && validateFiles(files)){
                   data.data[i] = files
                 }else{
                   return {...new ErrorHandler(data).handle({code: ErrorCodes.UPDATE_FAILED}), key: data.key, session: data.session, message: "Invalid file type or size", type: "update"}
