@@ -8,10 +8,10 @@ What is hapta? - hapta is a backend websocket server layer for pocketbase, it he
 3. Oauth2 gateway streaming
 4. Ratelimiting - this is not built into pocketbase directly - it only limits per request action up to a specific cancellation threshold which is not feasible for 10's of thousands of users
 5. Request validation - create custom validation code to validate the record before sent to client or database
-6. File upload handling through websocket stream - and file download handling 
+6. File upload handling through websocket stream - and file download handling - file validation
 7. Subscription based sessions - used to randomize sessions per user so no user can grab ones data
 8. Sqlite memory cache with bun - less round trips to the database, hapta client cache using sdk
-9. 
+9. Soon: Categorizing / metrics 
 # Installation
 > **Stop** If you do not know how to use [pocketbase](https://pocketbase.io/docs)
 
