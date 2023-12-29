@@ -97,19 +97,28 @@ export default class CacheController {
     
     try {
       if (!this.tableExists(collection)) {
-        this.db
-          .query(
-            `CREATE TABLE ${collection} (key TEXT, data TEXT, ttl INTEGER)`
-          )
-          .run();
+        console.log("Creating table", collection)
+        await this.createTable(collection, ["key TEXT", "data TEXT", "ttl INTEGER"]);
       }
-      this.db.run(
-        `INSERT INTO ${collection} (key, data, ttl) VALUES ('${key}', '${data}', '${ttl}')`
-      );
-      this.removeExpired(collection)
+      let exists = this.getCache(collection, key);
+      if (exists) {
+        return this.updateCache(collection, key, data);
+      } else {
+        this.db.exec(`INSERT INTO ${collection} (key, data, ttl) VALUES ('${key}', '${data}', ${ttl})`);
+      }
+      
     } catch (error) {
       console.log(error);
       return { error: true, message: error };
+    }
+  }
+
+  public async deleteTable(collection: string) {
+    try {
+      this.db.prepare(`DROP TABLE ${collection}`).run();
+      return true;
+    } catch (error) {
+      return false;
     }
   }
 

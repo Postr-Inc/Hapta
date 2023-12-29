@@ -121,6 +121,10 @@ export enum ErrorCodes {
      * @errorMessage {INVALID_FILE_TYPE} Invalid file type
      */
     INVALID_FILE_TYPE = 1007,
+    /**
+     * @errorMessage {MAX_FILE_UPLOAD_EXCEEDED} Max file upload  exceeded
+     */
+    MAX_FILE_UPLOAD_EXCEEDED = 1008,
 }
 
 let ErrorMessages  = {
@@ -149,7 +153,8 @@ let ErrorMessages  = {
     [ErrorCodes.TYPEOF_FILTER_NOT_STRING]: "Filter must be a string",
     [ErrorCodes.MISSING_AUTH_STATE_RECORDS]: "Please create authState and devAuthState collections in your database",
     [ErrorCodes.FAILED_ADMIN_AUTH]: "Failed to authenticate as admin",
-    [ErrorCodes.INVALID_FILE_TYPE]: "File given is not a valid file type"
+    [ErrorCodes.INVALID_FILE_TYPE]: "File given is not a valid file type",
+    [ErrorCodes.MAX_FILE_UPLOAD_EXCEEDED]: "You have exceeded the maximum file upload quota",
 
 }
 /**

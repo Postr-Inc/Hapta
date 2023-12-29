@@ -5,6 +5,7 @@ import EventEmitter from "events";
 import CacheController from "./CacheController";
 import { ErrorCodes, ErrorHandler } from "./ErrorHandler";
 import Pocketbase from "pocketbase";
+import { file } from "bun";
 let config = await import(process.cwd() + "/config.ts").then(
   (res) => res.default
 );
@@ -22,9 +23,7 @@ export default class CrudManager {
     this.subscriptions = new Map();
     this.evt = new EventEmitter();
     this.Cache = new CacheController();
-    this.worker = config.rules
-      ? new Worker(new URL(process.cwd() + config.rules, import.meta.url))
-      : null;
+    this.worker =  config.rules ? new Worker(new URL(process.cwd() + config.rules, import.meta.url)) : null 
   }
   async list(data: any) {
     let {
@@ -116,7 +115,7 @@ export default class CrudManager {
               filter ? filter.replace(/ /g, "") : ""
             }_${sort ? sort.replace(/ /g, "") : ""}_${
               expansion ? expansion.replace(/ /g, "") : ""
-            }`;
+            }`; 
 
           if (
             this.Cache.tableExists(collection) &&
@@ -209,11 +208,9 @@ export default class CrudManager {
             session: data.session,
           };
         } catch (error) {
-          console.log(error.data);
+          console.log(error.data)
           return {
-            ...new ErrorHandler(data).handle({
-              code: ErrorCodes.INVALID_REQUEST,
-            }),
+            ...new ErrorHandler(data).handle({ code: ErrorCodes.INVALID_REQUEST }),
             key: data.key,
             session: data.session,
           };
@@ -309,7 +306,7 @@ export default class CrudManager {
               this.Cache.createTable(data.collection);
               break;
             case this.Cache.tableExists(data.collection) &&
-              !this.Cache.exists(data.collection, res.id):
+              !this.Cache.exists(data.collection, res.id): 
               this.Cache.setCache(
                 data.collection,
                 newRecord.id,
@@ -391,8 +388,9 @@ export default class CrudManager {
               })
             : null;
 
-          if (this.Cache.tableExists(data.collection) && data.cacheKey) {
-            this.Cache.clear(data.collection, data.cacheKey);
+          if (this.Cache.tableExists(data.collection)) {
+            this.Cache.deleteTable(data.collection);
+            console.log("Clearing cache");
           }
 
           function validateFiles(files: any) {
@@ -407,56 +405,23 @@ export default class CrudManager {
             });
             return valid;
           }
-          for (var i in data.record) {
-            if (data.record[i].isFile && data.record[i].file) {
-              let files: any = [];
-              if (Array.isArray(data.record[i].file)) {
-                let invalidFiles = [];
-                data.record[i].file.forEach((file: any) => {
-                  const array = new Uint8Array(file);
-                  const blob = new Blob([array], { type: file.type });
-                  file = new File([blob], file.name, {
-                    type: file.type,
-                  });
-                  if (!validateFiles([file])) invalidFiles.push(file);
-
-                  files.push(file);
-                });
-
-                if (invalidFiles.length > 0)
-                  return {
-                    ...new ErrorHandler(data).handle({
-                      code: ErrorCodes.INVALID_FILE_TYPE,
-                    }),
-                    key: data.key,
-                    session: data.session,
-                    invalidFiles: invalidFiles,
-                    validFiles: files,
-                  };
-                data.record[i] = files;
-              } else {
-                const array = new Uint8Array(data.record[i].file);
-                const blob = new Blob([array], { type: data.record[i].type });
-                data.record[i] = Array.from(
-                  new File([blob], data.record[i].name, {
-                    type: data.record[i].type,
-                  })
-                );
-                if (!validateFiles(data.record[i]))
-                  return {
-                    ...new ErrorHandler(data).handle({
-                      code: ErrorCodes.INVALID_FILE_TYPE,
-                    }),
-                    key: data.key,
-                    session: data.session,
-                  };
-              }
+          try {
+            for (var i in data.data) {
+              if (data.data[i].isFile && data.data[i].file ) {
+                let files = this.handleFiles(data.data[i].file) 
+                if(files){
+                  data.data[i] = files
+                }else{
+                  return {...new ErrorHandler(data).handle({code: ErrorCodes.UPDATE_FAILED}), key: data.key, session: data.session, message: "Invalid file type or size", type: "update"}
+                }
+              } 
             }
+          } catch (error) {
+            console.log(error)
           }
+    
 
-          let res = await this.pb.admins.client
-            .collection(data.collection)
-            .create(data.record, { expand: expand || "" });
+          let res = await this.pb.admins.client.collection(data.collection).create(data.record, {expand: expand || ""});
           this.evt.emit("create", {
             collection: data.collection,
             record: res,
@@ -480,17 +445,48 @@ export default class CrudManager {
     }
   }
 
-  parseRules(rules: any) {
-    let rule = new URLSearchParams(rules);
-    let ruleKeys = [...rule.keys()];
-    let ruleValues = [...rule.values()];
-    let ruleObj: any = {};
-    ruleKeys.forEach((key, index) => {
-      ruleObj[key] = ruleValues[index];
-    });
-    return ruleObj;
+
+  parseRules(rules:any){
+    let rule =  new URLSearchParams(rules)
+    let ruleKeys = [...rule.keys()]
+    let ruleValues = [...rule.values()]
+    let ruleObj:any = {}
+    ruleKeys.forEach((key, index)=>{
+      ruleObj[key] = ruleValues[index]
+    })
+    return ruleObj
   }
 
+  handleFiles(data:any){
+    let files:any = [] 
+    if(Array.isArray(data)){
+      data.forEach((file:any)=>{
+        if(!file.data) return false
+        const array = new Uint8Array(file.data);
+        const blob = new Blob([array]);
+        let name = Math.random().toString(36).substring(7) + Date.now().toString(36)
+        let f = new File([blob],  file.name || name, {
+          type:  file.type || 'image/png'
+        });
+        
+        files.push(f)
+         
+       }) 
+       return files
+    }else{
+      const array = new Uint8Array(data.data);
+      const blob = new Blob([array]);
+      let name = Math.random().toString(36).substring(7) + Date.now().toString(36)
+      let f = new File([blob],data.name || name, {
+        type:  data.type || 'image/png'
+      });
+
+      return f
+    }
+
+   
+  }
+   
   async update(data: any) {
     switch (true) {
       case data.collection === "authState" ||
@@ -533,105 +529,50 @@ export default class CrudManager {
           key: data.key,
           session: data.session,
         };
-    }
-
-    if (this.worker) {
-      this.worker.postMessage({
-        ...data,
-        decodedToken: this.tokenManager.decode(data.token),
-      });
-      let promise = await new Promise((resolve, reject) => {
-        this.worker.onmessage = (e: any) => {
-          let res = e.data;
-          if (res.error) {
-            resolve({
-              ...new ErrorHandler(res).handle({
-                code: res.code || ErrorCodes.UPDATE_FAILED,
-              }),
-              key: data.key,
-              session: data.session,
-              type: "update",
-            });
+       
+    } 
+ 
+    if(this.worker){
+       // wait on response from worker
+      this.worker.postMessage({...data, decodedToken: this.tokenManager.decode(data.token)})
+      let promise = await new Promise((resolve, reject)=>{
+        this.worker.onmessage = (e:any) => {
+          let res = e.data
+          console.log(res)
+          if(res.error){
+         
+           resolve({...new ErrorHandler(res).handle({code: res.code || ErrorCodes.UPDATE_FAILED}) , key: data.key, session: data.session, type: "update"})
           }
-          resolve({ error: false });
+          resolve({error:false})
         };
-      });
-
-      if (promise.error) return promise;
-    } else {
-      console.log(
-        `⚠️ No  rule validator   found  all connections are vulnerable to attacks without validation!`
-      );
+      })
+     
+      if(promise.error) return promise
+    }else{
+      console.log(`⚠️ No  rule file found  all connections are vulnerable to attacks without validation!`)
     }
+
 
     try {
-      // handle files
-
-      function validateFiles(files: any) {
-        let valid = true;
-        files.forEach((file: any) => {
-          if (
-            !config.files.mimeTypes.includes(file.type) ||
-            file.size > config.files.maxFileSize
-          ) {
-            valid = false;
-          }
-        });
-        return valid;
-      }
-
       for (var i in data.data) {
         if (data.data[i].isFile && data.data[i].file) {
-          let files: any = [];
-          if (Array.isArray(data.data[i].file)) {
-            let invalidFiles = [];
-            data.data[i].file.forEach((file: any) => {
-              const array = new Uint8Array(file);
-              const blob = new Blob([array], { type: file.type });
-              file = new File([blob], file.name, {
-                type: file.type,
-              });
-              if (!validateFiles([file])) invalidFiles.push(file);
-
-              files.push(file);
-            });
-
-            if (invalidFiles.length > 0)
-              return {
-                ...new ErrorHandler(data).handle({
-                  code: ErrorCodes.INVALID_FILE_TYPE,
-                }),
-                key: data.key,
-                session: data.session,
-                invalidFiles: invalidFiles,
-                validFiles: files,
-              };
-            data.data[i] = files;
-          } else {
-            const array = new Uint8Array(data.data[i].file);
-            const blob = new Blob([array], { type: data.data[i].type });
-            data.data[i] = Array.from(
-              new File([blob], data.data[i].name, {
-                type: data.data[i].type,
-              })
-            );
-            if (!validateFiles(data.data[i]))
-              return {
-                ...new ErrorHandler(data).handle({
-                  code: ErrorCodes.INVALID_FILE_TYPE,
-                }),
-                key: data.key,
-                session: data.session,
-              };
+          let files = this.handleFiles(data.data[i].file) 
+          if(files){
+            data.data[i] = files
+          }else{
+            return {...new ErrorHandler(data).handle({code: ErrorCodes.UPDATE_FAILED}), key: data.key, session: data.session, message: "Invalid file type or size", type: "update"}
           }
-        }
+        } 
       }
+
+      
 
       let idFromToken = this.tokenManager.decode(data.token).id;
 
       if (this.Cache.tableExists(data.collection) && data.cacheKey) {
         this.Cache.clear(data.collection, data.cacheKey);
       }
+ 
 
       let expand = "";
       data.expand
@@ -641,7 +582,7 @@ export default class CrudManager {
         : null;
       let res = await this.pb.admins.client
         .collection(data.collection)
-        .update(data.id, data.data, { expand: expand || "" });
+        .update(data.id, data.data, { expand: expand || "",});
       if (
         data.collection === "users" &&
         idFromToken !== data.id &&
@@ -649,6 +590,7 @@ export default class CrudManager {
       ) {
         delete res.email;
       }
+ 
 
       this.evt.emit("update", {
         collection: data.collection,
@@ -714,29 +656,24 @@ export default class CrudManager {
           session: data.session,
           missing: "ownership",
         };
-
+      case this.worker:
+        this.worker.postMessage({...data, decodedToken: this.tokenManager.decode(data.token)})
+        let promise = await new Promise((resolve, reject)=>{
+          this.worker.onmessage = (e:any) => {
+            let res = e.data
+            console.log(res)
+            if(res.error){
+              resolve({...new ErrorHandler(res).handle({code: res.code || ErrorCodes.UPDATE_FAILED}) , key: data.key, session: data.session, type: "delete"})
+            }
+            resolve({error:false})
+          };
+        })
+       
+        if(promise.error) return promise
+       
       default:
-        if (this.worker) {
-          let promise = await new promise((resolve, reject) => {
-            this.worker.postMessage({ record: data });
-            this.worker.onmessage = (e: any) => {
-              let res = e.data;
-              if (res.error) {
-                resolve();
-                return {
-                  ...new ErrorHandler(res).handle({
-                    code: res.code || ErrorCodes.DELETE_FAILED,
-                  }),
-                  key: data.key,
-                  session: data.session,
-                };
-              }
-              resolve(res);
-            };
-          });
-          if (promise.error) return promise;
-        }
-        try {
+       
+        try { 
           if (this.Cache.tableExists(data.collection) && data.cacheKey) {
             this.Cache.clear(data.collection, data.cacheKey);
           }

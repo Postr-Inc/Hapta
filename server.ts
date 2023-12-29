@@ -37,7 +37,7 @@ try {
     await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
     console.log("Authentication successful")
 } catch (error) {
-    throw new Error(new ErrorHandler({type:'oauth'}).handle({code: ErrorCodes.AUTHORIZATION_FAILED}).message) 
+    throw new Error(new ErrorHandler({type:'auth'}).handle({code: ErrorCodes.AUTHORIZATION_FAILED}).message) 
 }
 
 
@@ -58,7 +58,7 @@ export const server =  Bun.serve({
         // if the upgrade succeeds
         return undefined;
       } 
-      return new Response("Hello world!");
+      return new  Response("Not found", {status: 404})
        
     },
     websocket: {
@@ -67,7 +67,7 @@ export const server =  Bun.serve({
       open(ws) {
         reqHandler.ws = () => ws;
       },
-      async message(ws, message) {
+      async message(ws: any, message: any) {
          reqHandler.ws = () => ws;
          let data = JSON.parse(message)
          if(data.type === 'authSession'){
@@ -90,9 +90,6 @@ console.log(`
     / /_/ / __ / __ \/ __/ __ / /
    / __  / /_/ / /_/ / /_/ /_/ / 
   /_/ /_/\__,_/ .___/\__/\__,_/  
-               
-         
- Version: 1.0.0
- 
- Gateway is running on port  ${server.port}  
+               Version: 1.0.2
+               Port: ${server.port} 
 `)

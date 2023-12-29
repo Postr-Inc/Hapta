@@ -5,7 +5,6 @@ export default {
     dashboard: {
         port: 3001,
         hostname: "localhost",
-        developmentMode: false 
     },
     files:{
         maxFileSize: 1800000, // 1.8MB
