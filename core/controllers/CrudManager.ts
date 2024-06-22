@@ -226,7 +226,7 @@ export default class CrudManager {
         this.Cache.setCache(data.collection, data.cacheKey, d, 3600) 
         setTimeout(()=>{
           this.Cache.clear(data.collection, data.cacheKey)
-        }, 3600000)
+        },  data.collection === 'users' ? 3600000 : 60000) // 1 hour for users, 1 minute for others
         return {error: false, message: 'success', key: data.key, data: d, session: data.session}
     }
 
@@ -275,6 +275,9 @@ export default class CrudManager {
       if(cache.exists(collection, cacheKey)){
         cache.clear(collection, cacheKey)
       } 
+      if(collection === 'users' && cache.exists('users', `posts-${id}`)){
+        cache.clear('users', `posts-${id}`)
+      }
       for (let i in data.data) {
         if (data.data[i].isFile && data.data[i].file) {
           let files = handleFiles(data.data[i].file);
@@ -359,7 +362,7 @@ export default class CrudManager {
         this.Cache.setCache(collection, cacheKey, d, 3600)
         setTimeout(()=>{
           this.Cache.clear(collection, cacheKey)
-        }, 3600000)
+        }, collection === 'users' ? 3600000 : 60000) // 1 hour for users, 1 minute for others
         return {error: false, message: 'success', key: key, data: d, session: session}
     }
   } 
