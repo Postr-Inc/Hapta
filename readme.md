@@ -2,6 +2,7 @@
 
 What is hapta? - hapta is a backend websocket server layer for pocketbase, it helps you secure connections to your pocketbase database, aswell as allows ratelimit spam protection and total controll over every database crud method.
 
+Why does postr use this? - Postr requires 10's of thousands of connections at once - we would not want all those requests to be served to the database directly. Instead we can authenticate - ratelimit - cache  - then serve the content from the database which provides a smoother experience.
 # Features
 1. Token based session management - rolling keys - these change each authentication call,
     - This prevents users from creating records outside of the app itself, allowing better monitoring.
@@ -10,7 +11,7 @@ What is hapta? - hapta is a backend websocket server layer for pocketbase, it he
 5. Request validation - create custom validation code to validate the record before sent to client or database
 6. File upload handling through websocket stream - and file download handling - file validation
 7. Subscription based sessions - used to randomize sessions per user so no user can grab ones data
-8. Sqlite memory cache with bun - less round trips to the database, hapta client cache using sdk
+8. Cache - less round trips to the database 
 9. Soon: Categorizing / metrics 
 # Installation
 > **Stop** If you do not know how to use [pocketbase](https://pocketbase.io/docs)
