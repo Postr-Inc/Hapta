@@ -15,15 +15,17 @@ What is hapta? - hapta is a backend websocket server layer for pocketbase, it he
 # Installation
 > **Stop** If you do not know how to use [pocketbase](https://pocketbase.io/docs)
 
-Download a copy of the code and follow the instructions below.
+Download a release
 
 # Usage
 In your env file you can edit the following needed fields
 ```env
-PORT=
-DB_URL=http://127.0.0.1:8090
+DB_URL=
 ADMIN_EMAIL=
-ADMIN_PASSWORD=
+ADMIN_PASSWORD= 
+HAPTA_ADMIN_KEY=
+SSL_ENABLED=true
+JWT_SECRET=
 ```
 Create a config.ts file and paste the following
 
@@ -32,12 +34,7 @@ Create a config.ts file and paste the following
 export default {
     port: 3000,
     hostname: "localhost",
-    developmentMode: true,
-    dashboard: {
-        port: 3001,
-        hostname: "localhost",
-        developmentMode: false 
-    },
+    developmentMode: true, 
     ratelimits:{
         default:{
             limit: 10,
@@ -70,8 +67,7 @@ export default {
             maxUses: 0
         }
 
-    },
-      
+    }, 
     rules: '/rules.ts',
 }
 
@@ -144,5 +140,5 @@ self.onmessage = (event: MessageEvent) => {
 
 ```
 ```bash
-bun run ./server.ts
+chmod +x ./hapta-server && ./hapta-server
 ```
