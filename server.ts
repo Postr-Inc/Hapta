@@ -1,3 +1,4 @@
+//@ts-nocheck
 import RequestHandler from "./core/controllers/Requests";
 import Pocketbase from 'pocketbase'
 import fs from 'fs'
@@ -7,12 +8,13 @@ if(!fs.existsSync(process.cwd() + '/config.ts')){
     console.log("⛔ Please create a config.ts file in the root directory")
     process.exit(1)
 }
+globalThis.version = "1.0.3"
 let config = await import(process.cwd() + '/config.ts').then((res) => res.default) 
  
 import eventsource from 'eventsource'
 import CrudManager from "./core/controllers/CrudManager";
 import { TokenManager } from "./core/utils/jwt/JWT";
-import { ErrorCodes, ErrorHandler } from "./core/controllers/ErrorHandler";
+import { ErrorCodes, ErrorHandler } from "./core/controllers/ErrorHandler"; 
 globalThis.EventSource = eventsource as any;
 switch(true){
     case !process.env.DB_URL:
@@ -27,6 +29,9 @@ switch(true){
         console.log("Please set the ratelimits in your config file")
         process.exit(1)
         break;
+    case !process.env.JWT_SECRET:
+        console.log("Please set the JWT_SECRET environment variable")
+        process.exit(1) 
     default:
         break;
 }
@@ -46,18 +51,42 @@ let reqHandler = new RequestHandler(ws,   pb,  config)
  
 export const server =  Bun.serve({
     port: port,
-    development: config.developmentMode || true,
-    fetch(req: any, server: any) {
-      const success = server.upgrade(req);
-      if(req.url === '/oauth'){
-        let body = JSON.parse(req.body)
-        console.log(body)
+    development: config.developmentMode || true,  
+    ...(process.env.SSL_ENABLED ? {
+      tls:{
+        key: Bun.file('./certs/private.pem'),
+        cert: Bun.file('./certs/public.pem')
       }
-      if (success) {
-        // Bun automatically returns a 101 Switching Protocols
-        // if the upgrade succeeds
-        return undefined;
+    } : {}),
+    async fetch(req, server: any) {
+      const success = server.upgrade(req);
+      let url = new URL(req.url) 
+      if (success) { 
+        return new Response("Connected", {status: 200})
       } 
+      if(url.pathname === '/'){
+        return new Response(JSON.stringify({
+          message: "Hapta server is running",
+          // @ts-ignore
+          version: globalThis.version || "1.0.0"  
+        }), {status: 200})
+      }
+      if(url.pathname === '/oauth'){
+        let body = JSON.parse(req.body as any) 
+      } 
+      if(url.pathname.startsWith('/read')){
+         let token = req.headers.get('Authorization')
+         if(!token || token !== process.env.HAPTA_ADMIN_KEY) return new Response("Unauthorized", {status: 401})
+         let collection = url.pathname.split('/')[2]
+         let id = url.pathname.split('/')[3] 
+         try {
+           let data = await reqHandler.crudManager.read({isAdmin: true, collection: collection, id: id, token, expand:["author", "comments", "likes"]})  
+          return new Response(JSON.stringify(data), {status: 200, headers: {'Content-Type': 'application/json'}})
+         } catch (error) {
+            return new Response("Not found", {status: 404})
+         }
+      }
+      
       return new  Response("Not found", {status: 404})
        
     },
@@ -69,16 +98,21 @@ export const server =  Bun.serve({
       },
       async message(ws: any, message: any) {
          reqHandler.ws = () => ws;
-         let data = JSON.parse(message)
+         let data = JSON.parse(message) 
          if(data.type === 'authSession'){
             console.log("Authenticating session", data.session)
             ws.subscribe(data.session) 
+            // @ts-ignore;
+            globalThis.ws = ws; 
+            reqHandler.ws = () => ws;
+            console.log("Session " + data.session + " successfully authenticated ✅")
+            ws.send(JSON.stringify({type: 'authSession', message: 'success'}))
             return;
          }
          reqHandler.handleRequest(message)
       },
       close(ws) {
-        new CrudManager(pb, config, new TokenManager(pb)) 
+        new CrudManager(pb, config, new TokenManager(process.env.JWT_SECRET || ""))  
       },
     },
   });
@@ -90,6 +124,6 @@ console.log(`
     / /_/ / __ / __ \/ __/ __ / /
    / __  / /_/ / /_/ / /_/ /_/ / 
   /_/ /_/\__,_/ .___/\__/\__,_/  
-               Version: 1.0.2
+               Version: ${globalThis.version || "1.0.0"}
                Port: ${server.port} 
 `)
