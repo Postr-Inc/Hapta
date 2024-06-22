@@ -54,6 +54,10 @@ export enum ErrorCodes {
      */
     AUTHORIZATION_FAILED = 300, 
     /**
+     * @errorMessage {NO_SESSION_GIVEN} Expected Session Id got None 
+     */
+    NO_SESSION_GIVEN = 304,
+    /**
      * @errorMessage {DATABASE_ERROR} Database error
      */
     DATABASE_ERROR = 400, 
@@ -142,6 +146,7 @@ let ErrorMessages  = {
     [ErrorCodes.UPDATE_FAILED]: "Failed to update record",
     [ErrorCodes.DELETE_FAILED]: "Failed to delete record",
     [ErrorCodes.READ_FAILED]: "Failed to read requested record id",
+    [ErrorCodes.NO_SESSION_GIVEN]: "Expected a session id but recieved none",
     [ErrorCodes.VALIDATION_FAILED]: "Validation failed",
     [ErrorCodes.RATE_LIMITED]: "Rate limited",
     [ErrorCodes.INTERNAL_ERROR]: "Internal error",
@@ -165,8 +170,7 @@ let ErrorMessages  = {
 export class ErrorHandler {
      msgData: any;
      constructor(msgData: any) {
-       this.msgData = msgData;
-        
+       this.msgData = msgData; 
      }
 
      public handle(error: any) {

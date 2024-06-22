@@ -6,9 +6,141 @@ import CacheController from "./CacheController";
 import { ErrorCodes, ErrorHandler } from "./ErrorHandler";
 import Pocketbase from "pocketbase";
 import { file } from "bun";
+import { Session } from "inspector";
+import { col } from "sequelize";
 let config = await import(process.cwd() + "/config.ts").then(
   (res) => res.default
 );
+
+function handleFiles(data:any){
+  let files:any = [] 
+  if(Array.isArray(data)){
+    data.forEach((file:any)=>{
+      if(!file.data) return false
+      const array = new Uint8Array(file.data);
+      const blob = new Blob([array]);
+      let name = Math.random().toString(36).substring(7) + Date.now().toString(36)
+      let f = new File([blob],  file.name || name, {
+        type:  file.type || 'image/png'
+      });
+      
+      files.push(f)
+       
+     }) 
+     return files
+  }else{
+    const array = new Uint8Array(data.data);
+    const blob = new Blob([array]);
+    let name = Math.random().toString(36).substring(7) + Date.now().toString(36)
+    let f = new File([blob],data.name || name, {
+      type:  data.type || 'image/png'
+    });
+
+    return f
+  }
+}
+
+function joinExpand(expand: Array<string>) {
+  return expand.map((e, index) => {
+    if (index === expand.length - 1) {
+      return e;
+    }
+    return e + ",";
+  }).join("");
+}
+
+function handle(item: any, returnable: Array<string>) {
+  let newRecord = {};
+  function recursiveObject(item: any) {
+    switch (true) {
+      case item.emailVisibility === false &&
+        item.email &&
+        item.email !== null:
+        delete item.email;
+        break;
+      case item.expand && item.expand !== null:
+        Object.keys(item.expand).forEach((key) => {
+          recursiveObject(item.expand[key]);
+        });
+        break;
+      case Array.isArray(item):
+        item.forEach((d) => {
+          recursiveObject(d);
+        });
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (item.expand && item.expand !== null) {
+    Object.keys(item.expand).forEach((key) => {
+      recursiveObject(item.expand[key]);
+    });
+  }
+
+  if(item.emailVisibility === false && item.email && item.email !== null){
+    delete item.email
+  }else if(item.emailVisibility === true && item.email && item.email !== null){
+    newRecord['email'] = item.email
+  }
+
+  Object.keys(item).forEach((key) => {
+    if (returnable && returnable.includes(key)) {
+      newRecord[key] = item[key];
+    }
+    newRecord[key] = item[key];
+  });
+
+  return newRecord;
+ 
+}
+
+function cannotUpdate(data: any, isSameUser: boolean) {
+  const cannotUpdate = [
+    "validVerified",
+    "postr_plus",
+    "followers",
+    "postr_subscriber_since",
+  ];
+  const others = [
+    "username",
+    "email",
+    "verified",
+    "validVerified",
+    "postr_plus",
+    "following",
+    "bio",
+    "postr_subscriber_since",
+  ];
+
+  if(new TokenManager().decodeToken(data.token).id == data.id){
+    for (const key in data.record) {
+      if (cannotUpdate.includes(key)) {
+        return{
+          ...new ErrorHandler(data).handle({
+            code: ErrorCodes.OWNERSHIP_REQUIRED
+          }),
+          key: data.key,
+          session: data.session
+        } 
+      }
+    }
+  }else{ 
+    for (const key in data.record) {
+      if (!others.includes(key)) {
+        return{
+          ...new ErrorHandler(data).handle({
+            code: ErrorCodes.OWNERSHIP_REQUIRED
+          }),
+          key: data.key,
+          session: data.session
+        } 
+      }
+    }
+  }
+  return false
+}
 export default class CrudManager {
   pb: Pocketbase;
   Config: any;
@@ -25,682 +157,207 @@ export default class CrudManager {
     this.Cache = new CacheController();
     this.worker =  config.rules ? new Worker(new URL(process.cwd() + config.rules, import.meta.url)) : null 
   }
-  async list(data: any) {
-    let {
-      collection,
-      limit,
-      offset,
-      filter,
-      sort,
-      expand,
-      returnable,
-      cacheKey,
-      cacheTime,
-    } = data.data;
-
-    switch (true) {
-      case collection === "authState" || collection === "devAuthState":
-        return {
-          ...new ErrorHandler(data).handle({
-            code: ErrorCodes.TRIED_TO_ACCESS_AUTHSTATE,
-          }),
-          key: data.key,
-          session: data.session,
-        };
-      case !collection:
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.FIELD_MISSING }),
-          key: data.key,
-          session: data.session,
-          missing: "collection",
-        };
-      case !data.token:
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.INVALID_TOKEN }),
-          key: data.key,
-          session: data.session,
-        };
-      case limit && typeof limit !== "number":
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.TYPE_MISMATCH }),
-          key: data.key,
-          session: data.session,
-          expected: "number",
-          got: typeof limit,
-        };
-      case offset && typeof offset !== "number":
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.TYPE_MISMATCH }),
-          key: data.key,
-          session: data.session,
-          expected: "number",
-          got: typeof offset,
-        };
-      case filter && typeof filter !== "string":
-        return {
-          ...new ErrorHandler(data).handle({
-            code: ErrorCodes.TYPEOF_FILTER_NOT_STRING,
-          }),
-          key: data.key,
-          session: data.session,
-        };
-      case sort && typeof sort !== "string":
-        return { error: true, message: "sort must be a string", key: data.key };
-      case expand && !Array.isArray(expand):
+  
+  public async create(data:{ 
+    key: string,
+    expand:Array<string>,
+    record:{
+        [key:string]:any
+    },
+    collection:string,
+    token:string,
+    id:string,
+    session:string
+  }){
+    switch(true){
+      case !data.key || !data.collection || !data.token || !data.id || !data.session || !data.record:
         return {
           error: true,
-          message: "expand must be an array",
-          key: data.key,
-        };
-      case returnable && !Array.isArray(returnable):
+          message: 'key, collection, token, id, session, and record are required'
+        }
+      case !await this.tokenManager.isValid(data.token, true) ||  this.tokenManager.decodeToken(data.token).id !== data.id:
+        return {...new ErrorHandler(data).handle({code: ErrorCodes.INVALID_TOKEN}), key: data.key, session: data.session, isValid: false}
+      default:
+        try {  
+          let d = await this.pb.admins.client.collection(data.collection).create(data.record, {
+            ...(data.expand && { expand: joinExpand(data.expand) }),
+          }); 
+          return {error: false, message: 'success', key: data.key, data: d, session: data.session}
+        } catch (error) {
+          console.log(error)
+          return {...new ErrorHandler(error).handle({code: ErrorCodes.AUTHORIZATION_FAILED}), key: data.key, session: data.session}
+        }
+    }
+  }
+  public async read(data:{
+    type?:  string,
+    key?:  string,
+    collection?:   string,
+    token?: string,
+    id?: string,
+    expand?:  Array<string>,
+    session?: string,
+    cacheKey?: string,
+    isAdmin?: boolean,
+  }){ 
+    switch(true){
+      case   !data.collection && !data.isAdmin || !data.token && !data.isAdmin || !data.id  && !data.isAdmin || !data.session  && !data.isAdmin :
         return {
           error: true,
-          message: "returnable must be an array",
+          message:  'collection, token, id, session, and cacheKey are required',
           key: data.key,
-        };
-      case !(await this.tokenManager.isValid(data.token, true)):
-        return { error: true, message: "Invalid token", key: data.key };
-      default:
-        try {
-          let expansion = "";
-          expand
-            ? expand.forEach((d) => {
-                expansion += `${d},`;
-              })
-            : null;
-
-          let cacheKey =
-            data.data.cacheKey ||
-            `${collection}_${offset}_${limit}_${
-              filter ? filter.replace(/ /g, "") : ""
-            }_${sort ? sort.replace(/ /g, "") : ""}_${
-              expansion ? expansion.replace(/ /g, "") : ""
-            }`; 
-
-          if (
-            this.Cache.tableExists(collection) &&
-            this.Cache.exists(collection, cacheKey)
-          ) {
-            let result = await this.Cache.getCache(collection, cacheKey);
-            if (result) {
-              let dt = JSON.parse(result.data);
-              return {
-                error: false,
-                key: data.key,
-                data: dt,
-                session: data.session,
-              };
-            }
-          } else {
-            this.Cache.createTable(collection);
-          }
-
-          let res: any = await pb.admins.client
-            .collection(collection)
-            .getList(offset, limit, {
-              filter: filter || "",
-              sort: sort || "created",
-              expand: expansion || "",
-            });
-
-          collection === "users" &&
-            res.items.length > 0 &&
-            res.items.forEach((item) => {
-              if (item.emailVisibility === false) delete item.email;
-            });
-          let newItems = res.items.map((item: any) => {
-            let newRecord = {
-              id: item.id,
-              expand: {},
-            };
-
-            function recursiveObject(item: any) {
-              switch (true) {
-                case item.emailVisibility === false &&
-                  item.email &&
-                  item.email !== null:
-                  delete item.email;
-                  break;
-                case item.expand && item.expand !== null:
-                  Object.keys(item.expand).forEach((key) => {
-                    recursiveObject(item.expand[key]);
-                  });
-                  break;
-                case Array.isArray(item):
-                  item.forEach((d) => {
-                    recursiveObject(d);
-                  });
-                  break;
-                default:
-                  break;
-              }
-            }
-
-            if (item.expand && item.expand !== null) {
-              Object.keys(item.expand).forEach((key) => {
-                recursiveObject(item.expand[key]);
-              });
-            }
-
-            Object.keys(item).forEach((key) => {
-              if (returnable && returnable.includes(key)) {
-                newRecord[key] = item[key];
-              }
-              newRecord[key] = item[key];
-            });
-
-            return newRecord;
-          });
-
-          res.items = newItems;
-
-          this.Cache.setCache(
-            collection,
-            cacheKey,
-            JSON.stringify(res),
-            Date.now() + 1200
-          );
-
-          return {
-            error: false,
-            key: data.key,
-            data: res,
-            session: data.session,
-          };
-        } catch (error) {
-          console.log(error.data)
-          return {
-            ...new ErrorHandler(data).handle({ code: ErrorCodes.INVALID_REQUEST }),
-            key: data.key,
-            session: data.session,
-          };
+          session: data.session,
+          isValid: false
         }
-    }
-  }
-
-  async read(data: any) {
-    switch (true) {
-      case !data.collection ||
-        data.collection === "authState" ||
-        data.collection === "devAuthState":
-        return {
-          ...new ErrorHandler(data).handle({
-            code: ErrorCodes.TRIED_TO_ACCESS_AUTHSTATE,
-          }),
-          key: data.key,
-          session: data.session,
-        };
-      case !data.id:
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.FIELD_MISSING }),
-          key: data.key,
-          session: data.session,
-          missing: "id",
-        };
-      case data.returnable && !Array.isArray(data.returnable):
-        return {
-          ...new ErrorHandler(data).handle({
-            code: ErrorCodes.TYPEOF_RETURNABLE_NOT_ARRAY,
-          }),
-          key: data.key,
-          session: data.session,
-        };
-      default:
-        let idFromToken = this.tokenManager.decode(data.token).id || null;
-
-        try {
-          let res = await this.pb.admins.client
-            .collection(data.collection)
-            .getOne(data.id, {
-              expand: data.expand ? data.expand.join(",") : "",
-            });
-
-          // Modify data based on specific conditions
-          if (
-            data.collection === "users" &&
-            idFromToken !== data.id &&
-            res.emailVisibility === false
-          ) {
-            delete res.email;
-          }
-
-          let newRecord = {
-            id: res.id,
-            expand: {},
-          };
-
-          function recursiveObject(item: any) {
-            switch (true) {
-              case item.emailVisibility === false &&
-                item.email &&
-                item.email !== null:
-                delete item.email;
-                break;
-              case item.expand && item.expand !== null:
-                Object.keys(item.expand).forEach((key) => {
-                  recursiveObject(item.expand[key]);
-                });
-                break;
-              case Array.isArray(item):
-                item.forEach((d) => {
-                  recursiveObject(d);
-                });
-                break;
-              default:
-                break;
-            }
-          }
-          if (res.expand && res.expand !== null) {
-            Object.keys(res.expand).forEach((key) => {
-              recursiveObject(res.expand[key]);
-            });
-          }
-          Object.keys(res).forEach((key) => {
-            if (data.returnable && data.returnable.includes(key)) {
-              newRecord[key] = res[key];
-            }
-            newRecord[key] = res[key];
-          });
-          switch (true) {
-            case !this.Cache.tableExists(data.collection):
-              this.Cache.createTable(data.collection);
-              break;
-            case this.Cache.tableExists(data.collection) &&
-              !this.Cache.exists(data.collection, res.id): 
-              this.Cache.setCache(
-                data.collection,
-                newRecord.id,
-                JSON.stringify(newRecord),
-                Date.now() + 1200
-              );
-              break;
-            default:
-              let cache = await this.Cache.getCache(data.collection, res.id);
-              if (cache) {
-                console.log("cache", cache);
-              }
-          }
-
-          return {
-            error: false,
-            key: data.key,
-            data: newRecord,
-            session: data.session,
-          };
-        } catch (error) {
-          console.log(error);
-          return {
-            ...new ErrorHandler(data).handle({ code: ErrorCodes.READ_FAILED }),
-            key: data.key,
-            session: data.session,
-          };
-        }
-    }
-  }
-  async create(data: any) {
-    switch (true) {
-      case data.collection === "authState" ||
-        data.collection.includes("authState"):
-        return {
-          ...new ErrorHandler(data).handle({
-            code: ErrorCodes.TRIED_TO_ACCESS_AUTHSTATE,
-          }),
-          key: data.key,
-          session: data.session,
-        };
-      case !data.collection:
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.FIELD_MISSING }),
-          key: data.key,
-          session: data.session,
-          missing: "collection",
-        };
-      case !data.record:
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.FIELD_MISSING }),
-          key: data.key,
-          session: data.session,
-          missing: "record",
-        };
-      case (!data.token && data.collection !== "users") ||
-        !this.tokenManager.isValid(data.token, true):
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.INVALID_TOKEN }),
-          key: data.key,
-          session: data.session,
-        };
-      case data.epand && !Array.isArray(data.expand):
-        return {
-          ...new ErrorHandler(data).handle({
-            code: ErrorCodes.TYPEOF_EXPAND_NOT_ARRAY,
-          }),
-          key: data.key,
-          session: data.session,
-          missing: "expand",
-        };
-
-      default:
-        try {
-          let expand = "";
-          data.expand
-            ? data.expand.forEach((d) => {
-                expand += `${d},`;
-              })
-            : null;
-
-          if (this.Cache.tableExists(data.collection)) {
-            this.Cache.deleteTable(data.collection);
-            console.log("Clearing cache");
-          }
-
-          function validateFiles(files: any) {
-            let valid = true;
-            files.forEach((file: any) => {
-              if (
-                !config.files.mimeTypes.includes(file.type) ||
-                file.size > config.files.maxFileSize
-              ) {
-                valid = false;
-              }
-            });
-            return valid;
-          }
-          try {
-            for (var i in data.data) {
-              if (data.data[i].isFile && data.data[i].file ) {
-                let files = this.handleFiles(data.data[i].file) 
-                if(files && validateFiles(files)){
-                  data.data[i] = files
-                }else{
-                  return {...new ErrorHandler(data).handle({code: ErrorCodes.UPDATE_FAILED}), key: data.key, session: data.session, message: "Invalid file type or size", type: "update"}
-                }
-              } 
-            }
-          } catch (error) {
-            console.log(error)
-          }
-    
-
-          let res = await this.pb.admins.client.collection(data.collection).create(data.record, {expand: expand || ""});
-          this.evt.emit("create", {
-            collection: data.collection,
-            record: res,
-            action: "create",
-          });
-          return {
-            error: false,
-            key: data.key,
-            data: res,
-            session: data.session,
-          };
-        } catch (error) {
-          return {
-            ...new ErrorHandler(error).handle({
-              code: ErrorCodes.CREATE_FAILED,
-            }),
-            key: data.key,
-            session: data.session,
-          };
-        }
-    }
-  }
-
-
-  parseRules(rules:any){
-    let rule =  new URLSearchParams(rules)
-    let ruleKeys = [...rule.keys()]
-    let ruleValues = [...rule.values()]
-    let ruleObj:any = {}
-    ruleKeys.forEach((key, index)=>{
-      ruleObj[key] = ruleValues[index]
-    })
-    return ruleObj
-  }
-
-  handleFiles(data:any){
-    let files:any = [] 
-    if(Array.isArray(data)){
-      data.forEach((file:any)=>{
-        if(!file.data) return false
-        const array = new Uint8Array(file.data);
-        const blob = new Blob([array]);
-        let name = Math.random().toString(36).substring(7) + Date.now().toString(36)
-        let f = new File([blob],  file.name || name, {
-          type:  file.type || 'image/png'
-        });
-        
-        files.push(f)
-         
-       }) 
-       return files
-    }else{
-      const array = new Uint8Array(data.data);
-      const blob = new Blob([array]);
-      let name = Math.random().toString(36).substring(7) + Date.now().toString(36)
-      let f = new File([blob],data.name || name, {
-        type:  data.type || 'image/png'
-      });
-
-      return f
-    }
-
-   
-  }
-   
-  async update(data: any) {
-    switch (true) {
-      case data.collection === "authState" ||
-        data.collection.includes("authState"):
-        return {
-          ...new ErrorHandler(data).handle({
-            code: ErrorCodes.TRIED_TO_ACCESS_AUTHSTATE,
-          }),
-          key: data.key,
-          session: data.session,
-        };
-
-      case !data.collection:
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.FIELD_MISSING }),
-          key: data.key,
-          session: data.session,
-          missing: "collection",
-        };
-
-      case !data.id:
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.FIELD_MISSING }),
-          key: data.key,
-          session: data.session,
-          missing: "id",
-        };
-
-      case !data.token:
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.FIELD_MISSING }),
-          key: data.key,
-          session: data.session,
-          missing: "token",
-        };
-
-      case !this.tokenManager.isValid(data.token, true):
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.FIELD_MISSING }),
-          key: data.key,
-          session: data.session,
-        };
-       
-    } 
- 
-    if(this.worker){
-       // wait on response from worker
-      this.worker.postMessage({...data, decodedToken: this.tokenManager.decode(data.token)})
-      let promise = await new Promise((resolve, reject)=>{
-        this.worker.onmessage = (e:any) => {
-          let res = e.data
-          console.log(res)
-          if(res.error){
-         
-           resolve({...new ErrorHandler(res).handle({code: res.code || ErrorCodes.UPDATE_FAILED}) , key: data.key, session: data.session, type: "update"})
-          }
-          resolve({error:false})
-        };
-      })
+      case !data.token == process.env.HAPTA_ADMIN_KEY && !await this.tokenManager.isValid(data.token, true)   ||  !data.token == process.env.HAPTA_ADMIN_KEY && this.tokenManager.decodeToken(data.token).id !== data.id: // bypass token check
      
-      if(promise.error) return promise
-    }else{
-      console.log(`⚠️ No  rule file found  all connections are vulnerable to attacks without validation!`)
+      return {...new ErrorHandler(data).handle({code: ErrorCodes.INVALID_TOKEN}), key: data.key, session: data.session, isValid: false}
+      default:
+        let existsinCache = this.Cache.exists(data.collection, data.cacheKey)
+        if(existsinCache){ 
+          let d = this.Cache.getCache(data.collection, data.cacheKey)  
+          if(d){ 
+            return {error: false, message: 'success', key: data.key, data: JSON.parse(d.data), session: data.session}
+          }
+        }  
+        let d = handle(await this.pb.admins.client.collection(data.collection).getOne(data.id, {
+          ...(data.expand && { expand: joinExpand(data.expand) }),
+        }), data.returnable)   
+        this.Cache.setCache(data.collection, data.cacheKey, d, 3600) 
+        setTimeout(()=>{
+          this.Cache.clear(data.collection, data.cacheKey)
+        }, 3600000)
+        return {error: false, message: 'success', key: data.key, data: d, session: data.session}
     }
 
-
-    try {
-      for (var i in data.data) {
-        if (data.data[i].isFile && data.data[i].file) {
-          let files = this.handleFiles(data.data[i].file) 
-          if(files){
-            data.data[i] = files
-          }else{
-            return {...new ErrorHandler(data).handle({code: ErrorCodes.UPDATE_FAILED}), key: data.key, session: data.session, message: "Invalid file type or size", type: "update"}
-          }
-        } 
-      }
-
-      
-
-      let idFromToken = this.tokenManager.decode(data.token).id;
-
-      if (this.Cache.tableExists(data.collection) && data.cacheKey) {
-        this.Cache.clear(data.collection, data.cacheKey);
-      }
- 
-
-      let expand = "";
-      data.expand
-        ? data.expand.forEach((d) => {
-            expand += `${d},`;
-          })
-        : null;
-      let res = await this.pb.admins.client
-        .collection(data.collection)
-        .update(data.id, data.data, { expand: expand || "",});
-      if (
-        data.collection === "users" &&
-        idFromToken !== data.id &&
-        res.emailVisibility === false
-      ) {
-        delete res.email;
-      }
- 
-
-      this.evt.emit("update", {
-        collection: data.collection,
-        record: res,
-        action: "update",
-      });
-      return { error: false, key: data.key, data: res, session: data.session };
-    } catch (error) {
+  }
+  public async update(data: { 
+    key: string,
+    data: { [key: string]: any },
+    expand: Array<string>,
+    collection: string,
+    sort: string,
+    filter: string,
+    token: string,
+    id: string,
+    session: string,
+    cacheKey: string
+  }) {    
+    let { key, token, session, id, cacheKey, collection } = data;
+  
+    // Check for required parameters
+    if (!key || !token || !session || !data.data || !collection  || !id) {
+      console.log('Missing required parameters:', data);
       return {
-        ...new ErrorHandler(data).handle({ code: ErrorCodes.UPDATE_FAILED }),
-        key: data.key,
-        session: data.session,
+        error: true,
+        message: 'key, collection, token, id, session, returnable, sort, filter, limit, offset, expand, and cacheKey are required'
+      };
+    }
+  
+    // Validate token
+    if (!await this.tokenManager.isValid(token, true) || (collection === 'users' && this.tokenManager.decodeToken(token).id !== id)) { 
+      return {
+        ...new ErrorHandler(data).handle({ code: ErrorCodes.INVALID_TOKEN }),
+        key: key,
+        session: session,
+        isValid: false
+      };
+    }
+  
+    try {
+      // Check if the update is allowed
+      if (cannotUpdate(data, true)) {
+        console.log('Cannot update data:', data);
+        return cannotUpdate(data, true);
+      }
+   
+      let cache = this.Cache
+      if(cache.exists(collection, cacheKey)){
+        cache.clear(collection, cacheKey)
+      } 
+      for (let i in data.data) {
+        if (data.data[i].isFile && data.data[i].file) {
+          let files = handleFiles(data.data[i].file);
+          if (files) {
+            data.data[i] = files;
+          } else {
+            return {
+              ...new ErrorHandler(data).handle({ code: ErrorCodes.UPDATE_FAILED }),
+              key: data.key,
+              session: data.session,
+              message: "Invalid file type or size",
+              type: "update"
+            };
+          }
+        }
+      }  
+
+      // Perform the update operation
+      let d = await this.pb.admins.client.collection(data.collection).update(id, data.data, {
+        ...(data.expand && { expand: joinExpand(data.expand) }),
+      }); 
+  
+      d = handle(d, data.returnable); 
+      return {
+        error: false,
+        message: 'success',
+        key: key,
+        data: d,
+        session: session
+      };
+    } catch (error) { 
+      return {
+        ...new ErrorHandler(error).handle({ code: ErrorCodes.AUTHORIZATION_FAILED }),
+        key: key,
+        session: session
       };
     }
   }
-  async delete(data: any) {
-    switch (true) {
-      case data.collection === "authState" ||
-        data.collection.includes("authState"):
+  
+  public async delete(data:{}){}
+  public async get(data:{
+    key: string,
+    token:string,
+    data: { 
+        returnable: Array<string>,
+        collection: string,
+        sort: string,
+        filter: string, 
+        limit:  number,
+        offset:  number,
+        id:  string,
+        expand: Array<string>,
+        cacheKey:  string,
+     
+    }, 
+    session:string
+  }){ 
+    let {key, token, session} = data
+    let {returnable, collection, sort, filter, limit, offset, id, expand, cacheKey} = data.data
+    switch(true){
+      case !key || !collection || !token || !id || !session   || !limit || !offset :
+        console.log("Missing required parameters:", data)
         return {
-          ...new ErrorHandler(data).handle({ code: 102 }),
-          key: data.key,
-          session: data.session,
-        };
-      case !(await this.tokenManager.isValid(data.token, true)):
-        return {
-          ...new ErrorHandler(data).handle({ code: 101 }),
-          key: data.key,
-          session: data.session,
-        };
-      case !data.collection:
-        return {
-          ...new ErrorHandler(data).handle({ code: 100 }),
-          key: data.key,
-          session: data.session,
-          missing: "collection",
-        };
-      case !data.id:
-        return {
-          ...new ErrorHandler(data).handle({ code: 100 }),
-          key: data.key,
-          session: data.session,
-          missing: "id",
-        };
-      case !data.token:
-        return {
-          ...new ErrorHandler(data).handle({ code: 1 }),
-          key: data.key,
-          session: data.session,
-          missing: "token",
-        };
-      case data.collection === "users" &&
-        this.tokenManager.decode(data.token).id !== data.id:
-        return {
-          ...new ErrorHandler().handle({ code: 105 }),
-          key: data.key,
-          session: data.session,
-        };
-      case !data.ownership:
-        return {
-          ...new ErrorHandler(data).handle({ code: ErrorCodes.FIELD_MISSING }),
-          key: data.key,
-          session: data.session,
-          missing: "ownership",
-        };
-      case this.worker:
-        this.worker.postMessage({...data, decodedToken: this.tokenManager.decode(data.token)})
-        let promise = await new Promise((resolve, reject)=>{
-          this.worker.onmessage = (e:any) => {
-            let res = e.data
-            console.log(res)
-            if(res.error){
-              resolve({...new ErrorHandler(res).handle({code: res.code || ErrorCodes.UPDATE_FAILED}) , key: data.key, session: data.session, type: "delete"})
-            }
-            resolve({error:false})
-          };
-        })
-       
-        if(promise.error) return promise
-       
-      default:
-       
-        try { 
-          if (this.Cache.tableExists(data.collection) && data.cacheKey) {
-            this.Cache.clear(data.collection, data.cacheKey);
-          }
-          let res = await this.pb.admins.client
-            .collection(data.collection)
-            .delete(data.id);
-          this.evt.emit("delete", {
-            collection: data.collection,
-            record: res,
-            action: "delete",
-          });
-          return {
-            error: false,
-            key: data.key,
-            data: res,
-            session: data.session,
-          };
-        } catch (error) {
-          console.log(error);
-          return {
-            error: true,
-            message: error.message,
-            key: data.key,
-            token: data.token,
-            session: data.session,
-          };
+          error: true,
+          message: 'key, collection, token, id, session, returnable, sort, filter, limit, offset, expand, and cacheKey are required'
         }
+      case !await this.tokenManager.isValid(token, true) && !token == process.env.HAPTA_ADMIN_KEY ||   this.tokenManager.decodeToken(token).id !== id&& !token == process.env.HAPTA_ADMIN_KEY: // bypass token check if token is the admin key  
+        return {...new ErrorHandler(data).handle({code: ErrorCodes.INVALID_TOKEN}), key: key, session: session, isValid: false}
+      default: 
+        let existsinCache = this.Cache.exists(collection, cacheKey)
+        if(existsinCache){ 
+          let d = this.Cache.getCache(collection, cacheKey)  
+          if(d){ 
+            return {error: false, message: 'success', key: key, data: JSON.parse(d.data), session: session}
+          }
+        }  
+        let d = handle(await this.pb.admins.client.collection(collection).getList(offset, limit, {
+          sort: sort,
+          filter: filter, 
+          ...(expand && {expand: joinExpand(expand)})
+        }), returnable)   
+        this.Cache.setCache(collection, cacheKey, d, 3600)
+        return {error: false, message: 'success', key: key, data: d, session: session}
     }
-  }
+  } 
 }

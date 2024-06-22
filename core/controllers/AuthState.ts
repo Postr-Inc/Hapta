@@ -12,34 +12,39 @@ export default class AuthSate{
         this.tokenManager = tokenManager;
     }
 
-   public async authUpdate(data: any){
+
+    public async authenticateWithRecipet(rt: string){
+        // a method that allows you to auth handshake without username password or email this is only for passkey devices!
+
+    }
+
+    public async authUpdate(data: any){
    
         switch(true){
+            case !data.data:
+                 return {...new ErrorHandler(data).handle({code: ErrorCodes.FIELD_MISSING}), key: data.key, session: data.session, missing: 'record', isValid: false}
             case !data.token:
                 return {
                     error: true,
                     message: 'token is required'
                 }
-            case !this.tokenManager.isValid(data.token, true) || this.tokenManager.decode(data.token).id !== data.data.record.id:
-                return {...new ErrorHandler(null).handle({code: ErrorCodes.INVALID_TOKEN}), key: data.key, session: data.session}
-            case !data.data.record:
-                 return {...new ErrorHandler(null).handle({code: ErrorCodes.FIELD_MISSING}), key: data.key, session: data.session, missing: 'record'}
-            default:
-         
-              
+            case !await this.tokenManager.isValid(data.token, true) ||  this.tokenManager.decodeToken(data.token).id !== data.data.id: 
+                return {...new ErrorHandler(data).handle({code: ErrorCodes.INVALID_TOKEN}), key: data.key, session: data.session, isValid: false}
+             
+            default: 
+                try { 
+                let d = await pb.admins.client.collection('users').getOne(data.data.id) 
+                return {error: false, message: 'success', key: data.key,  clientData: d, session: data.session}
         
-                try {
-                     
-                let d = await pb.admins.client.collection('users').getOne(data.data.record.id)
-               
-                return {error: false, message: 'success', key: data.data.key, clientData:d, session: data.session}
-        
-                } catch (error) {
-       
+                } catch (error) { 
                     return {...new ErrorHandler(error).handle({code: ErrorCodes.AUTHORIZATION_FAILED}), key: data.key, session: data.session}
                 }
           }
     
+    } 
+
+    public async ChangePassword(data: any, msg){
+           
     }
 
     public async authWithPassword(data: any){
@@ -47,18 +52,26 @@ export default class AuthSate{
             case !data.email || !data.username:
                 return {
                     error: true,
-                    message: 'email or username are required'
+                    message: 'email or username are required',
+                    key: data.key
+                }
+            case !data.session:
+                return {
+                    error:true,
+                    ...new ErrorHandler(data).handle({code: ErrorCodes.NO_SESSION_GIVEN}), 
+                    key: data.key
                 }
 
             case !data.password:
                 return {
                     error: true,
-                    message: 'password is required'
+                    message: 'password is required',
+                    key: data.key
                 }
             default:
                 try {
                     let res = await pb.admins.client.collection('users').authWithPassword(data.email || data.username, data.password)
-                    let token = await this.tokenManager.sign(res.record.id, await this.tokenManager.generateSigningKey(res.record.id, true) as string);
+                    let token = await this.tokenManager.sign({id:res.record.id, session: data.session}, await this.tokenManager.generateSigningKey(res.record.id, true) as string);
                     res['token'] = token as string;
                     return {error: false, message: 'success', key: data.key, clientData: res}
                 } catch (error) {
@@ -95,19 +108,12 @@ export default class AuthSate{
                 })
             },
            }) 
-
-        let signingKey = await  this.tokenManager.generateSigningKey(res.record.id, true) as string;
   
-        let newtoken = await  this.tokenManager.sign(res.record.id,  signingKey) as string;
+        let newtoken = this.tokenManager.generateToken({id: res.record.id, session: session},  3600)
         res['token'] = newtoken as string;
 
-        global.shouldLog && console.log(`User ${res.record.id} logged in`);
-
-        msg({type:'oauth', key:'oauth', clientData:res, session: session})
-
-    
-
-             
+        global.shouldLog && console.log(`User ${res.record.id} logged in`); 
+        msg({type:'oauth', key:'oauth', clientData:res, session: session}) 
       } catch (error) { 
      
         console.log(error)

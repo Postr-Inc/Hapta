@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { Database } from "bun:sqlite";
 /**
  * @class CacheController
@@ -6,38 +7,53 @@ import { Database } from "bun:sqlite";
 export default class CacheController {
   db: Database;
   constructor() {
-    this.db = new Database(":memory:");
-    this.db.exec("PRAGMA journal_mode = WAL;");
+    this.db = new Database(":memory:"); 
+    this.db.exec("PRAGMA journal_mode = WAL;"); 
   }
 
 
   public clear(collection: string, key: string) {
-    try {
-      this.db.prepare(`DELETE FROM ${collection} WHERE key='${key}'`).run();
+    try { 
+      this.db.exec(`DELETE FROM ${collection} WHERE key='${key}'`);
       return true;
     } catch (error) {
       return false;
     }
   }
-  public  getCache(collection: string, key: string) {
-    try {
-      this.db.prepare(`SELECT ttl FROM ${collection} WHERE key='${key}'`).get();
-
-      this.db
-        .prepare(
-          `UPDATE ${collection} SET ttl = ${Date.now()} WHERE key='${key}'`
-        )
-        .run();
-
-      return this.db
-        .prepare(`SELECT data FROM ${collection} WHERE key='${key}'`)
-        .get();
+  public getCache(collection: string, key: string) {
+    try {  
+      // Fetch the entry with the TTL
+      const entry = this.db.prepare(`SELECT data  FROM ${collection} WHERE key = ?`).get(key);
+  
+      if (!entry) {
+        // If entry does not exist, return null
+        return null;
+      }
+  
+      // Check if the entry has expired
+      const now = Date.now();
+      //@ts-ignore
+      if (entry.ttl && entry.ttl < now) {
+        // Entry has expired, delete it
+        this.clear(collection, key);
+        return null;
+      }
+  
+      // If entry is valid, update its TTL (if necessary)
+      // Assuming TTL needs to be refreshed on access, otherwise this can be omitted 
+      if (entry.ttl) {
+        this.db
+          .prepare(`UPDATE ${collection} SET ttl = ? WHERE key = ?`)
+          .run(now + entry.ttl);
+      }
+      //@ts-ignore  
+      return { data: entry.data };
     } catch (error) {
+      console.log(error);
       return { error: true, message: error };
     }
   }
-
-
+  
   public async update(collection: string, key: string, data: string) {
     try {
       this.db
@@ -61,11 +77,11 @@ export default class CacheController {
     }
   }
 
-  public async exists(collection: string, key: string) {
-    try {
-      this.db.prepare(`SELECT * FROM '${collection}' WHERE key='${key}'`).get();
+  public  exists(collection: string, key: string) {
+    try { 
+       this.db.prepare(`SELECT * FROM ${collection} WHERE key='${key}'`).get();
       return true;
-    } catch (error) {
+    } catch (error) { 
       return false;
     }
   }
@@ -84,7 +100,7 @@ export default class CacheController {
   public async updateCache(collection: string, key: string, data: string) {
     try {
       this.db
-        .prepare(`UPDATE ${collection} SET data = '${data}' WHERE key='${key}'`)
+        .prepare(`UPDATE ${collection} SET data = '${JSON.stringify(data)}' WHERE key='${key}'`)
         .run();
       return this.db
         .prepare(`SELECT data FROM ${collection} WHERE key='${key}'`)
@@ -95,18 +111,19 @@ export default class CacheController {
   }
   public async setCache(collection: string, key: string, data: string, ttl: number = 0) {
     
-    try {
+    try { 
+       
       if (!this.tableExists(collection)) {
-        console.log("Creating table", collection)
-        await this.createTable(collection, ["key TEXT", "data TEXT", "ttl INTEGER"]);
+         this.db.prepare(`CREATE TABLE ${collection} (key TEXT, data TEXT, ttl INTEGER)`).run();
       }
-      let exists = this.getCache(collection, key);
-      if (exists) {
-        return this.updateCache(collection, key, data);
-      } else {
-        this.db.exec(`INSERT INTO ${collection} (key, data, ttl) VALUES ('${key}', '${data}', ${ttl})`);
-      }
-      
+      this.db
+        .prepare(
+          `INSERT INTO ${collection} (key, data, ttl) VALUES ('${key}', '${JSON.stringify(data)}', ${ttl ? Date.now() + ttl : 0})`
+        )
+        .run();
+      return this.db
+        .prepare(`SELECT data FROM ${collection} WHERE key='${key}'`)
+        .get();
     } catch (error) {
       console.log(error);
       return { error: true, message: error };
@@ -126,8 +143,7 @@ export default class CacheController {
     try {
       let t = this.db
         .prepare(`SELECT * FROM sqlite_master WHERE type='table'`)
-        .all();
-        console.log(await t)
+        .all(); 
     } catch (error) {
       return { error: true, message: error };
     }
@@ -162,18 +178,10 @@ export default class CacheController {
     
     return flattened
   }
-     // remove collections that expired
-    public async removeExpired(collection: string) {
-        try {
-            this.db.prepare(`DELETE FROM ${collection} WHERE ttl < ${Date.now()}`).run()
-            let timer = setTimeout(() => {
-                this.removeExpired(collection)
-                clearTimeout(timer)
-            }, 20000) // run every 2 seconds
-            return true
-        } catch (error) {
-            return false
-        }
-    }
-}
- 
+  startExpirationCheck() {
+    setInterval(async () => {
+      const now = Date.now();
+      await this.db.exec(`DELETE FROM cache WHERE  ttl < ${now}`);
+    }, 60000); // Run every minute
+  }
+} 
