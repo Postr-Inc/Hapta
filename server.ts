@@ -32,6 +32,9 @@ switch(true){
     case !process.env.JWT_SECRET:
         console.log("Please set the JWT_SECRET environment variable")
         process.exit(1) 
+    case process.env.SSL_ENABLED == 'true' && (!fs.existsSync('./certs/private.pem') || !fs.existsSync('./certs/public.pem')):
+        console.log("Please generate SSL certificates in the certs directory - private.pem and public.pem ( these have to pertain to the domain of your app)")
+        process.exit(1)
     default:
         break;
 }
@@ -48,11 +51,10 @@ try {
 
 let ws = null; 
 let reqHandler = new RequestHandler(ws,   pb,  config)
- 
 export const server =  Bun.serve({
     port: port,
     development: config.developmentMode || true,  
-    ...(process.env.SSL_ENABLED ? {
+    ...(process.env.SSL_ENABLED == 'true' ? {
       tls:{
         key: Bun.file('./certs/private.pem'),
         cert: Bun.file('./certs/public.pem')
@@ -126,4 +128,5 @@ console.log(`
   /_/ /_/\__,_/ .___/\__/\__,_/  
                Version: ${globalThis.version || "1.0.0"}
                Port: ${server.port} 
+               SSL: ${process.env.SSL_ENABLED == 'true' ? 'Enabled' : 'Disabled'}
 `)
