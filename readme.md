@@ -46,33 +46,14 @@ export default {
             limit: 10,
             every: 1000,
             maxUses: 0
-        },
-        update:{
-            limit: 10,
-            every: 1000,
-            maxUses: 0
-        },
-        delete:{
-            limit: 10,
-            every: 1000,
-            maxUses: 0
-        },
-        create:{
-            limit: 10,
-            every: 1000,
-            maxUses: 0
-        },
-        authUpdate:{
-            limit: 10,
-            every: 1000,
-            maxUses: 0
-        }
-
+        }, 
     }, 
     rules: '/rules.ts',
 }
 
 ```
+
+# Custom rules
 You can write a rules entry file to validate all records before and or after they are returned to db/user
 
 ```ts
@@ -143,3 +124,10 @@ self.onmessage = (event: MessageEvent) => {
 ```bash
 chmod +x ./hapta-server && ./hapta-server
 ```
+
+# Build yourself
+
+1. Download the source code
+2. Customize to your use case - things like expansions - name - filters - or cache controll logic
+3. Then run `./build.sh` and your code will be packaged to a  hapta-server file for several server types 
+
