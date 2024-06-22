@@ -255,7 +255,7 @@ export default class CrudManager {
     }
   
     // Validate token
-    if (!await this.tokenManager.isValid(token, true) || (collection === 'users' && this.tokenManager.decodeToken(token).id !== id)) { 
+    if (!await this.tokenManager.isValid(token, true)) { 
       return {
         ...new ErrorHandler(data).handle({ code: ErrorCodes.INVALID_TOKEN }),
         key: key,
@@ -335,11 +335,11 @@ export default class CrudManager {
     let {key, token, session} = data
     let {returnable, collection, sort, filter, limit, offset, id, expand, cacheKey} = data.data
     switch(true){
-      case !key || !collection || !token || !id || !session   || !limit || !offset :
-        console.log("Missing required parameters:", data)
+      case !key || !collection || !token || !id || !session   || !data.data.hasOwnProperty("limit") || !data.data.hasOwnProperty('offset') :
+        console.log("Missing field " + (!key ? ' key' : !collection ? ' collection' : !token ? ' token' : !id ? ' id' : !session ? ' session' : !limit ? ' limit' : !offset ? ' offset' : ' returnable, sort, filter, limit, offset, expand, and cacheKey'))
         return {
           error: true,
-          message: 'key, collection, token, id, session, returnable, sort, filter, limit, offset, expand, and cacheKey are required'
+          message: !key ? 'key is required' : !collection ? 'collection is required' : !token ? 'token is required' : !id ? 'id is required' : !session ? 'session is required' : !limit ? 'limit is required' : !offset ? 'offset is required' : 'returnable, sort, filter, limit, offset, expand, and cacheKey are required'
         }
       case !await this.tokenManager.isValid(token, true) && !token == process.env.HAPTA_ADMIN_KEY ||   this.tokenManager.decodeToken(token).id !== id&& !token == process.env.HAPTA_ADMIN_KEY: // bypass token check if token is the admin key  
         return {...new ErrorHandler(data).handle({code: ErrorCodes.INVALID_TOKEN}), key: key, session: session, isValid: false}
@@ -352,11 +352,14 @@ export default class CrudManager {
           }
         }  
         let d = handle(await this.pb.admins.client.collection(collection).getList(offset, limit, {
-          sort: sort,
-          filter: filter, 
+          ...(sort && {sort: sort}),
+          ...(filter && {filter: filter}),
           ...(expand && {expand: joinExpand(expand)})
         }), returnable)   
         this.Cache.setCache(collection, cacheKey, d, 3600)
+        setTimeout(()=>{
+          this.Cache.clear(collection, cacheKey)
+        }, 3600000)
         return {error: false, message: 'success', key: key, data: d, session: session}
     }
   } 
