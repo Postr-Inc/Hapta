@@ -124,7 +124,7 @@ export class TokenManager {
       if (!signingKey) {
         return false;
       } 
-      const currentTime = Math.floor(Date.now() / 1000);
+      const currentTime =  Math.floor(Date.now() / 1000);
       if (decoded.exp && decoded.exp < currentTime) {
         console.log("Token has expired");
         return false;

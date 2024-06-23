@@ -1,187 +1,78 @@
-//@ts-nocheck
-import { Database } from "bun:sqlite";
-/**
- * @class CacheController
- * @description Haptas Cache Controller for storing and retrieving data from the cache based on sqlite
- */
-export default class CacheController {
-  db: Database;
-  constructor() {
-    this.db = new Database(":memory:"); 
-    this.db.exec("PRAGMA journal_mode = WAL;"); 
+interface CacheEntry<T> {
+  value: T;
+  expires: number;
+}
+
+export default class CacheController<T> {
+  private maxAge: number;
+  private cacheStore: Map<string, CacheEntry<T>>;
+  private maxSize: number;
+  private evictionPolicy: 'LRU' | 'FIFO';
+  public keysQueue: string[];
+
+  constructor(maxAge: number = 1000 * 60 * 60 * 24, maxSize: number = 100, evictionPolicy: 'LRU' | 'FIFO' = 'LRU') {
+    this.maxAge = maxAge;
+    this.cacheStore = new Map();
+    this.maxSize = maxSize;
+    this.evictionPolicy = evictionPolicy;
+    this.keysQueue = [];
   }
 
-
-  public clear(collection: string, key: string) {
-    try { 
-      this.db.exec(`DELETE FROM ${collection} WHERE key='${key}'`);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-  public getCache(collection: string, key: string) {
-    try {  
-      // Fetch the entry with the TTL
-      const entry = this.db.prepare(`SELECT data  FROM ${collection} WHERE key = ?`).get(key);
-  
-      if (!entry) {
-        // If entry does not exist, return null
-        return null;
+  private evictIfNecessary() {
+    if (this.cacheStore.size >= this.maxSize) {
+      let keyToEvict;
+      if (this.evictionPolicy === 'LRU') {
+        keyToEvict = this.keysQueue.shift();
+      } else {
+        keyToEvict = this.keysQueue.pop();
       }
-  
-      // Check if the entry has expired
-      const now = Date.now();
-      //@ts-ignore
-      if (entry.ttl && entry.ttl < now) {
-        // Entry has expired, delete it
-        this.clear(collection, key);
-        return null;
+      if (keyToEvict) {
+        this.cacheStore.delete(keyToEvict);
       }
-  
-      // If entry is valid, update its TTL (if necessary)
-      // Assuming TTL needs to be refreshed on access, otherwise this can be omitted 
-      if (entry.ttl) {
-        this.db
-          .prepare(`UPDATE ${collection} SET ttl = ? WHERE key = ?`)
-          .run(now + entry.ttl);
+    }
+  }
+  exists(key: string): boolean {
+    return this.cacheStore.has(key);
+  }
+
+  set(key: string, value: T, maxAge: number = this.maxAge) {
+    const expires = Date.now() + maxAge;
+    this.evictIfNecessary();
+    this.cacheStore.set(key, { value, expires });
+    this.keysQueue.push(key);
+    return { value, expires };
+  }
+
+  get(key: string): T | null {
+    const cache = this.cacheStore.get(key);
+    if (cache) {
+      if (cache.expires > Date.now()) {
+        return cache.value;
+      } else {
+        console.log('Cache expired');
+        this.cacheStore.delete(key);
+        const index = this.keysQueue.indexOf(key);
+        if (index > -1) {
+          this.keysQueue.splice(index, 1);
+        }
       }
-      //@ts-ignore  
-      return { data: entry.data };
-    } catch (error) {
-      console.log(error);
-      return { error: true, message: error };
     }
-  }
-  
-  public async update(collection: string, key: string, data: string) {
-    try {
-      this.db
-        .prepare(`UPDATE ${collection} SET data = '${data}' WHERE key='${key}'`)
-        .run();
-      return this.db
-        .prepare(`SELECT data FROM ${collection} WHERE key='${key}'`)
-        .get();
-    } catch (error) {
-      return false;
-    }
+    return null;
   }
 
-  public async list(collection: string, offset: number, limit: number, order: string) {
-    try {
-      return this.db
-        .prepare(`SELECT * FROM  ${collection} LIMIT ${offset}, ${limit} ORDER BY  ${order}`)
-        .all();
-    } catch (error) {
-      return { error: true, message: error };
-    }
+  delete(key: string) {
+    this.cacheStore.delete(key);
+    const index = this.keysQueue.indexOf(key);
+    if (index > -1) {
+      this.keysQueue.splice(index, 1);
+    } 
   }
 
-  public  exists(collection: string, key: string) {
-    try { 
-       this.db.prepare(`SELECT * FROM ${collection} WHERE key='${key}'`).get();
-      return true;
-    } catch (error) { 
-      return false;
-    }
+  clear() {
+    this.cacheStore.clear();
+    this.keysQueue = [];
   }
-  public tableExists(collection: string) {
-    try {
-      return this.db
-        .query(
-          `SELECT name FROM sqlite_master WHERE type='table' AND name='${collection}'`
-        )
-        .get();
-    } catch (error) { 
-      return { error: true, message: error };
-    }
+  getKeys() {
+    return Array.from(this.cacheStore.keys());
   }
-   
-  public async updateCache(collection: string, key: string, data: string) {
-    try {
-      this.db
-        .prepare(`UPDATE ${collection} SET data = '${JSON.stringify(data)}' WHERE key='${key}'`)
-        .run();
-      return this.db
-        .prepare(`SELECT data FROM ${collection} WHERE key='${key}'`)
-        .get();
-    } catch (error) {
-      return false;
-    }
-  }
-  public async setCache(collection: string, key: string, data: string, ttl: number = 0) {
-    
-    try { 
-       
-      if (!this.tableExists(collection)) {
-         this.db.prepare(`CREATE TABLE ${collection} (key TEXT, data TEXT, ttl INTEGER)`).run();
-      }
-      this.db
-        .prepare(
-          `INSERT INTO ${collection} (key, data, ttl) VALUES ('${key}', '${JSON.stringify(data)}', ${ttl ? Date.now() + ttl : 0})`
-        )
-        .run();
-      return this.db
-        .prepare(`SELECT data FROM ${collection} WHERE key='${key}'`)
-        .get();
-    } catch (error) {
-      console.log(error);
-      return { error: true, message: error };
-    }
-  }
-
-  public async deleteTable(collection: string) {
-    try {
-      this.db.prepare(`DROP TABLE ${collection}`).run();
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  public async tables() {
-    try {
-      let t = this.db
-        .prepare(`SELECT * FROM sqlite_master WHERE type='table'`)
-        .all(); 
-    } catch (error) {
-      return { error: true, message: error };
-    }
-  }
-
-  public async createTable(collection: string, fields: string[]) {
-    try {
-      this.db
-        .prepare(
-          `CREATE TABLE IF NOT EXISTS ${collection} (${fields.join(", ")})`
-        )
-        .run();
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  public flatten(collection: string) {
-    // return an array of all the items in the collection 
-    /**
-     *  {items:[], totalPage: 0, totalItems: 0}
-     */
-    if(!this.tableExists(collection)) return
-    let items = this.db.prepare(`SELECT * FROM ${collection}`).all()
-    let flattened: any = []
-    items.forEach((item: any) => {
-        let data = JSON.parse(item.data)
-        flattened.push(data)
-    })
-    
-    
-    return flattened
-  }
-  startExpirationCheck() {
-    setInterval(async () => {
-      const now = Date.now();
-      await this.db.exec(`DELETE FROM cache WHERE  ttl < ${now}`);
-    }, 60000); // Run every minute
-  }
-} 
+}

@@ -8,7 +8,7 @@ if(!fs.existsSync(process.cwd() + '/config.ts')){
     console.log("⛔ Please create a config.ts file in the root directory")
     process.exit(1)
 }
-globalThis.version = "1.0.3"
+globalThis.version = "1.0.4"
 let config = await import(process.cwd() + '/config.ts').then((res) => res.default) 
  
 import eventsource from 'eventsource'
