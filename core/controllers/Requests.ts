@@ -46,6 +46,7 @@ export default class RequestHandler {
     this.crudManager = new CrudManager(this.pb, this.Config, this.TokenManager); 
     this.handleStatuses()
   }
+ 
 
   public addLimits() {
     if (this.addedLimits) return;
@@ -191,6 +192,8 @@ export default class RequestHandler {
       msg.type !== "isRatelimited" &&
       msg.type !== "fetchFile" 
       && msg.type !== "ping"
+      && msg.type !== "refreshToken"
+      && !msg.type === "startTrialSession"
     ) { 
       if (msg.token !== process.env.HAPTA_ADMIN_KEY && !this.TokenManager.isValid(msg.token, true) 
       ) return this.sendMsg({ error: true, message: "Invalid token" , session: msg.session});
@@ -206,7 +209,14 @@ export default class RequestHandler {
       case "authWithPassword":
         this.sendMsg(await this.authState.authWithPassword(msg.data));
         break;
+      case "startTrialSession": 
+       this.sendMsg(this.TokenManager.generateToken({session: msg.session, trial:true, permittedOperations: ['read']}, 900))
+       break;
       case "authGuidedHandshake":
+        break;
+      case "refreshToken":
+        console.log(msg)
+        this.sendMsg(this.authState.refreshToken(msg));
         break;
       case "isValid":
         console.log(msg)

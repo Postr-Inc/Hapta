@@ -13,19 +13,40 @@ let config = await import(process.cwd() + "/config.ts").then(
 );
 
 const updateQueue = new Map<string, any[]>();
+const deleteQueue = new Map<string, any[]>();
+const createQueue = new Map<string, any[]>();
 const lastUpdated = new Map<string, number>();
 
-function appendToQueue(data: any, cancelPrevious = true) {
+function appendToQueue(data: any, cancelPrevious = true, method: string) {
   if (cancelPrevious && updateQueue.has(data.id)) {
     // If cancelPrevious is true, replace existing updates for the same ID
     updateQueue.set(data.id, [data]);
   } else {
-    if (updateQueue.has(data.id)) {
-      updateQueue.get(data.id)?.push(data);
-    } else {
-      console.log("Queue appended");
-      updateQueue.set(data.id, [data]);
-    }
+    switch (method) {
+      case "create":
+        if (updateQueue.has(data.id)) {
+          updateQueue.get(data.id)?.push(data);
+        } else {
+          console.log("Queue appended");
+          updateQueue.set(data.id, [data]);
+        }
+        break;
+      case "delete":
+        if (deleteQueue.has(data.id)) {
+          deleteQueue.get(data.id)?.push(data);
+        } else {
+          console.log("Queue appended");
+          deleteQueue.set(data.id, [data]);
+        }
+        break;
+      default:
+        if (updateQueue.has(data.id)) {
+          updateQueue.get(data.id)?.push(data);
+        } else {
+          console.log("Queue appended");
+          updateQueue.set(data.id, [data]);
+        }
+    } 
   }
   // Update the last updated timestamp
   lastUpdated.set(data.id, Date.now());
@@ -62,6 +83,42 @@ async function rollQueue(id: string, pb: Pocketbase) {
       }
       updateQueue.delete(id);
     }
+  }else if(deleteQueue.has(id)){
+    const queue = deleteQueue.get(id);
+    if (queue) {
+      const lastTime = lastUpdated.get(id) || 0;
+      if (Date.now() - lastTime < 1000) {
+        console.log(`Skipping rollQueue for ${id} due to recent update`);
+        return;
+      }
+
+      count++;
+      for (const d of queue) {
+        await pb.admins.client.collection(d.collection).delete(d.id);
+        console.log(`Queue rolled ${count} times`);
+      }
+      deleteQueue.delete(id);
+    }
+  
+  }else if(createQueue.has(id)){
+    const queue = createQueue.get(id);
+    if (queue) {
+      const lastTime = lastUpdated.get(id) || 0;
+      if (Date.now() - lastTime < 1000) {
+        console.log(`Skipping rollQueue for ${id} due to recent update`);
+        return;
+      }
+
+      count++;
+      for (const d of queue) {
+        await pb.admins.client.collection(d.collection).create(d.record, {
+          ...(d.expand && { expand: joinExpand(d.expand) }),
+        });
+        console.log(`Queue rolled ${count} times`);
+      }
+      createQueue.delete(id);
+    }
+  
   }
 }
 
@@ -153,6 +210,37 @@ function handle(item: any, returnable: Array<string>) {
   return newRecord;
 }
 
+
+function invalidateCache(data: any, cache: CacheController, notExact = false) {
+  let keys = cache.getKeys();
+  let invalidateParts = data.hasOwnProperty("invalidateCache") ? data.invalidateCache.split("-") : data.split("-"); 
+  for (const key of keys) {
+    let keyParts = key.split("-");
+    let matches = true;
+    for (const part of invalidateParts) {
+      if (!keyParts.includes(part)) {
+        matches = false;
+        break;
+      }
+    }
+    // if notExact is true, only the first part of the key needs to match
+    if(notExact){
+       // delete keys that have the key 
+      if(keyParts.includes(invalidateParts[0])){
+        cache.delete(key);
+        console.log(`Cache key invalidated: ${key}`);
+      }
+    }else{
+      if (matches && keyParts.length >= invalidateParts.length && !notExact) {
+        cache.delete(key); 
+      } else {
+        console.log(`Key: ${key} does not match invalidate criteria`);
+      }
+    }
+    
+  }
+
+}
 function cannotUpdate(data: any, isSameUser: boolean) {
   const cannotUpdate = [
     "validVerified",
@@ -175,6 +263,7 @@ function cannotUpdate(data: any, isSameUser: boolean) {
     for (const key in data.record) {
       if (cannotUpdate.includes(key)) {
         return {
+          error:true,
           ...new ErrorHandler(data).handle({
             code: ErrorCodes.OWNERSHIP_REQUIRED,
           }),
@@ -187,6 +276,7 @@ function cannotUpdate(data: any, isSameUser: boolean) {
     for (const key in data.record) {
       if (!others.includes(key)) {
         return {
+          error:true,
           ...new ErrorHandler(data).handle({
             code: ErrorCodes.OWNERSHIP_REQUIRED,
           }),
@@ -233,8 +323,11 @@ export default class CrudManager {
     record: {
       [key: string]: any;
     };
+    invalidateCache: Array<string>;
+    immediatelyUpdate: boolean;
     collection: string;
     token: string;
+    returnable: Array<string>;
     id: string;
     session: string;
   }) {
@@ -253,6 +346,7 @@ export default class CrudManager {
       case !(await this.tokenManager.isValid(data.token, true)) ||
         this.tokenManager.decodeToken(data.token).id !== data.id:
         return {
+          error:true,
           ...new ErrorHandler(data).handle({ code: ErrorCodes.INVALID_TOKEN }),
           key: data.key,
           session: data.session,
@@ -260,21 +354,54 @@ export default class CrudManager {
         };
       default:
         try {
-          let d = await this.pb.admins.client
-            .collection(data.collection)
-            .create(data.record, {
-              ...(data.expand && { expand: joinExpand(data.expand) }),
-            });
+  
+          if(!pb.authStore.isValid){
+            await this.relogin()
+          }
+ 
+          for (let i in data.record) {
+            if (data.record[i].isFile && data.record[i].file) {
+              let files = handleFiles(data.record[i].file);
+              if (files) {
+                data.record[i] = files;
+              } else {
+                return {
+                  ...new ErrorHandler(data).handle({
+                    code: ErrorCodes.CREATE_FAILED,
+                  }),
+                  key: data.key,
+                  session: data.session,
+                  message: "Invalid file type or size",
+                  type: "update",
+                };
+              }
+            }
+          }
+          let dt = handle(
+            await this.pb.admins.client
+              .collection(data.collection)
+              .create(data.record, {
+                ...(data.expand && { expand: joinExpand(data.expand) }),
+              }),
+            data.returnable 
+          )
+
+          if (data.invalidateCache) {
+            for(const key of data.invalidateCache){
+              invalidateCache(key, this.Cache, true);
+            } 
+          }
           return {
             error: false,
             message: "success",
             key: data.key,
-            data: d,
+            data:  dt,
             session: data.session,
           };
         } catch (error) {
-          console.log(error);
+          console.log(error.message);
           return {
+            error:true,
             ...new ErrorHandler(error).handle({
               code: ErrorCodes.AUTHORIZATION_FAILED,
             }),
@@ -318,37 +445,51 @@ export default class CrudManager {
           isValid: false,
         };
       default:
-        let existsinCache = this.Cache.exists(data.cacheKey);
-        if (existsinCache) {
-          let d = this.Cache.get(data.cacheKey);
-          if (d) {
-            return {
-              error: false,
-              message: "success",
-              key: data.key,
-              data:  d,
-              session: data.session,
-            };
+        if(!pb.authStore.isValid){
+          await this.relogin()
+        }
+        try {
+          let existsinCache = this.Cache.exists(data.cacheKey);
+          if (existsinCache) {
+            let d = this.Cache.get(data.cacheKey);
+            if (d) {
+              return {
+                error: false,
+                message: "success",
+                key: data.key,
+                data:  d,
+                session: data.session,
+              };
+            }
           }
-        }
-        let d = handle(
-          await this.pb.admins.client
-            .collection(data.collection)
-            .getOne(data.id, {
-              ...(data.expand && { expand: joinExpand(data.expand) }),
+          let d = handle(
+            await this.pb.admins.client
+              .collection(data.collection)
+              .getOne(data.id, {
+                ...(data.expand && { expand: joinExpand(data.expand) }),
+              }),
+            data.returnable
+          ); 
+          if(!this.Cache.exists(data.cacheKey)){
+            this.Cache.set(data.cacheKey, d,  new Date().getTime() + 3600)
+          }
+          return {
+            error: false,
+            message: "success",
+            key: data.key,
+            data: d,
+            session: data.session,
+          };
+        } catch (error) {
+          console.log(error);
+          return {
+            ...new ErrorHandler(error).handle({
+              code: ErrorCodes.DATABASE_ERROR
             }),
-          data.returnable
-        ); 
-        if(!this.Cache.exists(data.cacheKey)){
-          this.Cache.set(data.cacheKey, d,  new Date().getTime() + 3600)
+            key: data.key,
+            session: data.session,
+          };
         }
-        return {
-          error: false,
-          message: "success",
-          key: data.key,
-          data: d,
-          session: data.session,
-        };
     }
   }
   public async update(data: {
@@ -370,11 +511,12 @@ export default class CrudManager {
 
     // Check for required parameters
     if (!key || !token || !session || !data.data || !collection || !id) {
-      console.log("Missing required parameters:", data);
+      console.log("Missing required parameters:",  !key ? " key " : !token ? " token " : !session ? " session " : !data.data ? " data " : !collection ? " collection " : !id ? " id " : "expand, collection, sort, filter, token, id, and session");
       return {
         error: true,
-        message:
-          "key, collection, token, id, session, returnable, sort, filter, limit, offset, expand, and cacheKey are required",
+        session: session,
+        key: key,
+        message: !key ? "key is required" : !token ? "token is required" : !session ? "session is required" : !data.data ? "data is required" : !collection ? "collection is required" : !id ? "id is required" : "expand, collection, sort, filter, token, id, and session are required",
       };
     }
 
@@ -390,9 +532,11 @@ export default class CrudManager {
 
     try {
       // Check if the update is allowed
-      if (cannotUpdate(data, true)) {
-        console.log("Cannot update data:", data);
+      if (cannotUpdate(data, true)) { 
         return cannotUpdate(data, true);
+      }
+      if(!pb.authStore.isValid){
+        await this.relogin()
       }
  
       for (let i in data.data) {
@@ -414,22 +558,27 @@ export default class CrudManager {
         }
       }
 
+      console.log(`immendiate update: ${data.immediatelyUpdate} for ${data.collection} ${data.id}`)
+
       let existsinCache = this.Cache.exists(cacheKey);
+      console.log("Exists in cache: " + existsinCache + " for " + cacheKey)
       let final = null
-      if (existsinCache && !data.invalidateCache) {
-        let keys = this.Cache.getKeys();
+      if (existsinCache && !data.invalidateCache ) {
+        let keys = this.Cache.getKeys(); 
         for (const key of  keys) { 
           const cachedData = this.Cache.get(key); 
           if (cachedData && cachedData.collectionName === collection && cachedData.items) {
             const itemId = cachedData.items.findIndex(
               (item: { id: string }) => item.id === id
             );   
+            console.log(itemId)
             if (itemId > -1 && cachedData.collectionName === collection) { 
               cachedData.items[itemId] = {
                 ...cachedData.items[itemId],
                 ...data.data, 
-              } 
-            }
+              }
+              console.log("Updating cache" + key) 
+            } 
             final = cachedData
           }else if(cachedData && cachedData.collectionName === collection && !cachedData.items && !data.invalidateCache){
             if(collection === "users"){
@@ -461,8 +610,9 @@ export default class CrudManager {
       }
 
       if (data.invalidateCache) {
-        let keys = this.Cache.getKeys();
-        let invalidateParts = data.invalidateCache.split("-");
+         for(var invalidkey of data.invalidateCache){ 
+          let keys = this.Cache.getKeys();
+        let invalidateParts = invalidkey.split("-");
       
         for (const key of keys) {
           let keyParts = key.split("-");
@@ -485,18 +635,25 @@ export default class CrudManager {
             console.log(`Key: ${key} does not match invalidate criteria`);
           }
         }
+         }
       }
       
 
-      if(final){
-        console.log("Updating cache" + cacheKey)
-        this.Cache.set(cacheKey, final, new Date().getTime() + 3600) // 
+      if(final && !data.immediatelyUpdate){ 
+        console.log("Returning from cache")
+        return {
+          error: false,
+          message: "success",
+          key: key,
+          data: final,
+          session: session,
+        };
       }
       if(!data.skipDataUpdate && !data.immediatelyUpdate){
-        appendToQueue(data);
+        appendToQueue(data, true, "update");
       }
       else if(data.immediatelyUpdate){
-        await this.pb.admins.client.collection(collection).update(id, data.data);
+        data.data = await this.pb.admins.client.collection(collection).update(id, data.data);
       }else{
         console.log("Skipping data update")
       }
@@ -505,7 +662,7 @@ export default class CrudManager {
         error: false,
         message: "success",
         key: key, 
-        data: final,
+        data: data.data,
         session: session,
       };
     } catch (error) {
@@ -520,10 +677,28 @@ export default class CrudManager {
     }
   }
 
-  public async delete(data: {}) {}
+  private async relogin(){
+    try {
+      await this.pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
+      console.log("Re-Authentication successful")
+    } catch (error) {
+      throw new Error(new ErrorHandler({type:'auth'}).handle({code: ErrorCodes.AUTHORIZATION_FAILED}).message) 
+    }
+  }
+
+  public async delete(data: {
+    id:string;
+    key: string;
+    collection: string;
+    token: string;
+    session: string;
+  }) {
+    
+  }
   public async get(data: {
     key: string;
     token: string;
+    isAdmin: boolean;
     data: {
       returnable: Array<string>;
       collection: string;
@@ -576,7 +751,7 @@ export default class CrudManager {
               : !offset
               ? " offset"
               : " returnable, sort, filter, limit, offset, expand, and cacheKey")
-        );
+        ); 
         return {
           error: true,
           message: !key
@@ -606,6 +781,10 @@ export default class CrudManager {
           isValid: false,
         };
       default:
+        if(!pb.authStore.isValid){
+          console.log("Re-Authenticating")
+          await this.relogin()
+        }
         let existsinCache = this.Cache.exists(cacheKey);
         if (existsinCache && !data.data.refresh) { 
           console.log("Cache exists")
@@ -620,6 +799,7 @@ export default class CrudManager {
             };
           }
         }
+
         let d = handle(
           await this.pb.admins.client
             .collection(collection)
@@ -648,6 +828,7 @@ export default class CrudManager {
         }
         d.collectionName = collection;
         if(!this.Cache.exists(cacheKey)){   
+          console.log("Setting cache" + cacheKey)
           this.Cache.set(cacheKey, d,  new Date().getTime() + 3600)
         }  
         return {

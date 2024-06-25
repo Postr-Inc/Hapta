@@ -48,8 +48,7 @@ export default class CacheController<T> {
     if (cache) {
       if (cache.expires > Date.now()) {
         return cache.value;
-      } else {
-        console.log('Cache expired');
+      } else { 
         this.cacheStore.delete(key);
         const index = this.keysQueue.indexOf(key);
         if (index > -1) {

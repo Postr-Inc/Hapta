@@ -17,6 +17,39 @@ export class TokenManager {
     return Buffer.from(data).toString("base64url");
   }
 
+  refreshToken(msg: {
+    token: string;
+    key: string;
+    session: string;
+  }){
+    try { 
+    if (!this.verifyToken(msg.token)) {
+      return  {
+        ...new ErrorHandler({type: 'auth'}).handle({code: ErrorCodes.INVALID_TOKEN}),
+        key: 'tokenRefresh',
+        error: true,
+        session: msg.session
+      }
+    } 
+    const decoded = this.decodeToken(msg.token);
+    const payload = { id: decoded.id , exp: Math.floor(Date.now() / 1000) + 900 } // 15 minutes
+    const newToken = this.generateToken(payload, 900);
+    return {
+      error: false,
+      token: newToken,
+      key: msg.key,
+      message: 'Token refreshed successfully',
+      session: msg.session
+    }
+    } catch (error) { 
+      return {
+        ...new ErrorHandler(error).handle({code: ErrorCodes.INVALID_TOKEN}),
+        key:  msg.key,
+        error: true,
+      }
+    }
+  }
+
   // Helper function to decode base64 data
   private base64Decode(data: string) {
     return Buffer.from(data, "base64url").toString("utf8");
@@ -42,6 +75,8 @@ export class TokenManager {
 
   // Verify a token
   verifyToken(token: string): boolean {
+    // verify token has 3 parts before splitting
+    if(!token || token.includes('.') && token.split('.').length !== 3) return false;
     const [header, payload, signature] = token.split(".");
 
     if (!header || !payload || !signature) {
@@ -112,7 +147,8 @@ export class TokenManager {
       return await this.generateSigningKey(id, client);
     }
   } 
-  async isValid(token: string, client: any = null): Promise<boolean> {
+  async isValid(token: string, client: any = null, isRefreshing: boolean): Promise<boolean> {
+    // if refreshing then we only need to verify the signature not the expiry
     try {
       if (!this.verifyToken(token)) {
         console.log("Invalid token: signature mismatch");
@@ -125,8 +161,7 @@ export class TokenManager {
         return false;
       } 
       const currentTime =  Math.floor(Date.now() / 1000);
-      if (decoded.exp && decoded.exp < currentTime) {
-        console.log("Token has expired");
+      if (decoded.exp && decoded.exp < currentTime && !isRefreshing) { 
         return false;
       }
 

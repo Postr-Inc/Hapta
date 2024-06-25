@@ -8,7 +8,7 @@ if(!fs.existsSync(process.cwd() + '/config.ts')){
     console.log("⛔ Please create a config.ts file in the root directory")
     process.exit(1)
 }
-globalThis.version = "1.0.4"
+globalThis.version = "1.0.5"
 let config = await import(process.cwd() + '/config.ts').then((res) => res.default) 
  
 import eventsource from 'eventsource'
@@ -44,6 +44,12 @@ pb.admins.client.autoCancellation(false)
 try { 
     await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
     console.log("Authentication successful")
+    setInterval(async () => {
+      if(!pb.authStore.isValid){
+        await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
+        console.log("Reauthenticated")
+      }
+    }, 2500) // keep the process running
 } catch (error) {
     throw new Error(new ErrorHandler({type:'auth'}).handle({code: ErrorCodes.AUTHORIZATION_FAILED}).message) 
 }
@@ -64,16 +70,17 @@ export const server =  Bun.serve({
       const success = server.upgrade(req);
       let url = new URL(req.url) 
       if (success) { 
-        return new Response("Connected", {status: 200})
+        return new Response("Connected", {status: 200, headers: {'Content-Type': 'text/plain', 'x-powered-by': 'Hapta'}})
       } 
       if(url.pathname === '/'){
         return new Response(JSON.stringify({
           message: "Hapta server is running",
           // @ts-ignore
           version: globalThis.version || "1.0.0"  
-        }), {status: 200})
+        }), {status: 200, headers: {'x-powered-by': 'Hapta', 'Content-Type': 'application/json'}})
       }
       if(url.pathname === '/oauth'){
+        // soon: custom oauth2 implementation
         let body = JSON.parse(req.body as any) 
       } 
       if(url.pathname.startsWith('/read')){
@@ -82,7 +89,8 @@ export const server =  Bun.serve({
          let collection = url.pathname.split('/')[2]
          let id = url.pathname.split('/')[3] 
          try {
-           let data = await reqHandler.crudManager.read({isAdmin: true, collection: collection, id: id, token, expand:["author", "comments", "likes"]})  
+           let data = await reqHandler.crudManager.read({isAdmin: true, collection: collection, id: id, token, expand:["author", "comments", "likes"], 
+            cacheKey: collection + id, cacheTime: 60 * 60 * 24 * 7}) 
           return new Response(JSON.stringify(data), {status: 200, headers: {'Content-Type': 'application/json'}})
          } catch (error) {
             return new Response("Not found", {status: 404})
