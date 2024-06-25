@@ -40,16 +40,13 @@ switch(true){
 }
 export let pb  = new Pocketbase(process.env.DB_URL || "")
 
-pb.admins.client.autoCancellation(false)
+pb.admins.client.autoCancellation(false) 
 try { 
     await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
     console.log("Authentication successful")
-    setInterval(async () => {
-      if(!pb.authStore.isValid){
-        await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
-        console.log("Reauthenticated")
-      }
-    }, 2500) // keep the process running
+    setInterval(async () => { 
+       await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "") 
+    }, 1000000)  
 } catch (error) {
     throw new Error(new ErrorHandler({type:'auth'}).handle({code: ErrorCodes.AUTHORIZATION_FAILED}).message) 
 }
@@ -138,3 +135,16 @@ console.log(`
                Port: ${server.port} 
                SSL: ${process.env.SSL_ENABLED == 'true' ? 'Enabled' : 'Disabled'}
 `)
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.log('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Application specific logging, throwing an error, or other logic here
+});
+
+// before server is closed save all data
+
+process.on('SIGINT', async () => { 
+  await reqHandler.crudManager.rollAllQueues()
+  console.log("Server is shutting down")
+  process.exit(0)
+})

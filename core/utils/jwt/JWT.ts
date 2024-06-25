@@ -22,7 +22,8 @@ export class TokenManager {
     key: string;
     session: string;
   }){
-    try { 
+    try {
+       // verify token
     if (!this.verifyToken(msg.token)) {
       return  {
         ...new ErrorHandler({type: 'auth'}).handle({code: ErrorCodes.INVALID_TOKEN}),
@@ -41,7 +42,8 @@ export class TokenManager {
       message: 'Token refreshed successfully',
       session: msg.session
     }
-    } catch (error) { 
+    } catch (error) {
+      console.log(error)
       return {
         ...new ErrorHandler(error).handle({code: ErrorCodes.INVALID_TOKEN}),
         key:  msg.key,
@@ -75,8 +77,6 @@ export class TokenManager {
 
   // Verify a token
   verifyToken(token: string): boolean {
-    // verify token has 3 parts before splitting
-    if(!token || token.includes('.') && token.split('.').length !== 3) return false;
     const [header, payload, signature] = token.split(".");
 
     if (!header || !payload || !signature) {
@@ -161,7 +161,8 @@ export class TokenManager {
         return false;
       } 
       const currentTime =  Math.floor(Date.now() / 1000);
-      if (decoded.exp && decoded.exp < currentTime && !isRefreshing) { 
+      if (decoded.exp && decoded.exp < currentTime && !isRefreshing) {
+        console.log("Token has expired");
         return false;
       }
 

@@ -12,7 +12,10 @@ export default class AuthSate{
         this.tokenManager = tokenManager;
     }
 
- 
+
+    public adminAuth(data: any){
+         
+    }
     public refreshToken(token: string) {
         return this.tokenManager.refreshToken(token);
       }

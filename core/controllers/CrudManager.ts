@@ -316,6 +316,12 @@ export default class CrudManager {
       }
     }, 300000);
   }
+  
+  async rollAllQueues() {
+    for (const key of updateQueue.keys()) {
+      await rollQueue(key, this.pb);
+    }
+  }
 
   public async create(data: {
     key: string;
@@ -566,7 +572,7 @@ export default class CrudManager {
       if (existsinCache && !data.invalidateCache ) {
         let keys = this.Cache.getKeys(); 
         for (const key of  keys) { 
-          const cachedData = this.Cache.get(key); 
+          const cachedData = this.Cache.get(key);  
           if (cachedData && cachedData.collectionName === collection && cachedData.items) {
             const itemId = cachedData.items.findIndex(
               (item: { id: string }) => item.id === id
@@ -637,7 +643,9 @@ export default class CrudManager {
         }
          }
       }
-      
+      if(!data.skipDataUpdate && !data.immediatelyUpdate){
+        appendToQueue(data, true, "update");
+      }
 
       if(final && !data.immediatelyUpdate){ 
         console.log("Returning from cache")
@@ -649,9 +657,7 @@ export default class CrudManager {
           session: session,
         };
       }
-      if(!data.skipDataUpdate && !data.immediatelyUpdate){
-        appendToQueue(data, true, "update");
-      }
+       
       else if(data.immediatelyUpdate){
         data.data = await this.pb.admins.client.collection(collection).update(id, data.data);
       }else{
@@ -662,7 +668,7 @@ export default class CrudManager {
         error: false,
         message: "success",
         key: key, 
-        data: data.data,
+        data:  data.data,
         session: session,
       };
     } catch (error) {
@@ -781,63 +787,76 @@ export default class CrudManager {
           isValid: false,
         };
       default:
-        if(!pb.authStore.isValid){
-          console.log("Re-Authenticating")
-          await this.relogin()
-        }
-        let existsinCache = this.Cache.exists(cacheKey);
-        if (existsinCache && !data.data.refresh) { 
-          console.log("Cache exists")
-          let d = this.Cache.get(cacheKey); 
-          if (d) {
-            return {
-              error: false,
-              message: "success",
-              key: key,
-              data: d,
-              session: session,
-            };
+         try {
+          if(!pb.authStore.isValid){
+            console.log("Re-Authenticating")
+            await this.relogin()
           }
-        }
-
-        let d = handle(
-          await this.pb.admins.client
-            .collection(collection)
-            .getList(offset, limit, {
-              ...(sort && { sort: sort }),
-              ...(filter && { filter: filter }),
-              ...(expand && { expand: joinExpand(expand) }),
+          let existsinCache = this.Cache.exists(cacheKey);
+          if (existsinCache && !data.data.refresh) { 
+            console.log("Cache exists")
+            let d = this.Cache.get(cacheKey); 
+            if (d) {
+              return {
+                error: false,
+                message: "success",
+                key: key,
+                data: d,
+                session: session,
+              };
+            }
+          }
+  
+          let d = handle(
+            await this.pb.admins.client
+              .collection(collection)
+              .getList(offset, limit, {
+                ...(sort && { sort: sort }),
+                ...(filter && { filter: filter }),
+                ...(expand && { expand: joinExpand(expand) }),
+              }),
+            returnable
+          ); 
+          let keys = this.Cache.getKeys();
+          for (const key of keys) {
+            const cachedData = this.Cache.get(key);  
+            if (cachedData && cachedData.collectionName === collection && cachedData.items) {
+               let dupdated = d.items.map((item: any) => {
+                const itemId = cachedData.items.findIndex(
+                  (i: { id: string }) => i.id === item.id
+                ); 
+                if (itemId > -1) {
+                  item = cachedData.items[itemId];
+                }
+                 return item;
+               });
+                d.items = dupdated;
+            }
+          }
+          d.collectionName = collection;
+          if(!this.Cache.exists(cacheKey)){   
+            console.log("Setting cache" + cacheKey)
+            this.Cache.set(cacheKey, d,  new Date().getTime() + 3600)
+          }  
+          return {
+            error: false,
+            message: "success",
+            key: key,
+            data: d,
+            session: session,
+          };
+         } catch (error) {
+          console.log(error);
+          return {
+            ...new ErrorHandler(error).handle({
+              code: ErrorCodes.DATABASE_ERROR
             }),
-          returnable
-        ); 
-        let keys = this.Cache.getKeys();
-        for (const key of keys) {
-          const cachedData = this.Cache.get(key);  
-          if (cachedData && cachedData.collectionName === collection && cachedData.items) {
-             let dupdated = d.items.map((item: any) => {
-              const itemId = cachedData.items.findIndex(
-                (i: { id: string }) => i.id === item.id
-              ); 
-              if (itemId > -1) {
-                item = cachedData.items[itemId];
-              }
-               return item;
-             });
-              d.items = dupdated;
-          }
-        }
-        d.collectionName = collection;
-        if(!this.Cache.exists(cacheKey)){   
-          console.log("Setting cache" + cacheKey)
-          this.Cache.set(cacheKey, d,  new Date().getTime() + 3600)
-        }  
-        return {
-          error: false,
-          message: "success",
-          key: key,
-          data: d,
-          session: session,
-        };
+            key: key,
+            session: session,
+            error: true,
+          };
+         }
+        
     }
   }
 }
