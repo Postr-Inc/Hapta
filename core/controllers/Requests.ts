@@ -87,9 +87,7 @@ export default class RequestHandler {
         if (now - user.time >= offlineThreshold) {
           this.isOnline.delete(user.userID); 
         }
-      });
-  
-    
+      }); 
   
       if(this.ws()){
         this.ws().send(JSON.stringify({ type: "status", data: Array.from(this.isOnline.values()) }));
@@ -127,8 +125,7 @@ export default class RequestHandler {
       client.lastUsed = Date.now();   
       if (client.used >= this.rateLimits.get(type)?.maxUses) {
         if (Date.now() - client.lastUsed < this.rateLimits.get(type)?.every) {
-          this.handleSpam(client); 
-          this.ws().unsubscribe(this.TokenManager.decodeToken(token).session);
+          this.handleSpam(client);  
           return;
         } else {
           this.isSpamming.delete(token);
@@ -141,9 +138,7 @@ export default class RequestHandler {
   
   
   private handleSpam(client: any) {
-    this.isSpamming.set(client.token, Date.now());
-    //@ts-ignore 
-    this.ws().unsubscribe(this.TokenManager.decodeToken(client.token).session); 
+    this.isSpamming.set(client.token, Date.now()); 
   }
   
 

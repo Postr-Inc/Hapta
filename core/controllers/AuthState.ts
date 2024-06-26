@@ -100,10 +100,10 @@ export default class AuthSate{
              bio: "I am new to Postr!",
              followers: [],
              following: [],
+             devices: [], 
             },
             redirectUrl: data.redirectUrl,
-            urlCallback: (url) => {
-               
+            urlCallback: (url) => { 
                msg({
                     type: 'oauth',
                     key:'oauth',
@@ -120,12 +120,9 @@ export default class AuthSate{
         res['token'] = newtoken as string; 
         global.shouldLog && console.log(`User ${res.record.id} logged in`); 
         msg({type:'oauth', key:'oauth', clientData:res, session: session}) 
-      } catch (error) { 
-     
+      } catch (error) {  
         console.log(error)
-        msg({...new ErrorHandler(error).handle({code:  ErrorCodes.AUTHORIZATION_FAILED}), session: session, key: 'oauth'})
-        
-        
+        msg({...new ErrorHandler(error).handle({code:  ErrorCodes.AUTHORIZATION_FAILED}), session: session, key: 'oauth'})  
       }
     }
 

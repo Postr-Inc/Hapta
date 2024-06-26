@@ -22,8 +22,7 @@ export class TokenManager {
     key: string;
     session: string;
   }){
-    try {
-       // verify token
+    try {  
     if (!this.verifyToken(msg.token)) {
       return  {
         ...new ErrorHandler({type: 'auth'}).handle({code: ErrorCodes.INVALID_TOKEN}),
@@ -77,15 +76,19 @@ export class TokenManager {
 
   // Verify a token
   verifyToken(token: string): boolean {
-    const [header, payload, signature] = token.split(".");
+    try {
+      const [header, payload, signature] = token.split(".");
 
-    if (!header || !payload || !signature) {
+      if (!header || !payload || !signature) {
+        return false;
+      }
+  
+      const validSignature = this.createSignature(header, payload);
+  
+      return signature === validSignature;
+    } catch (error) {
       return false;
     }
-
-    const validSignature = this.createSignature(header, payload);
-
-    return signature === validSignature;
   }
 
   // Decode a token without verification

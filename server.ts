@@ -42,11 +42,9 @@ export let pb  = new Pocketbase(process.env.DB_URL || "")
 
 pb.admins.client.autoCancellation(false) 
 try { 
-    await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
-    console.log("Authentication successful")
-    setInterval(async () => { 
-       await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "") 
-    }, 1000000)  
+    await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "", {
+       autoRefreshThreshold:1800
+    }) 
 } catch (error) {
     throw new Error(new ErrorHandler({type:'auth'}).handle({code: ErrorCodes.AUTHORIZATION_FAILED}).message) 
 }

@@ -75,9 +75,12 @@ async function rollQueue(id: string, pb: Pocketbase) {
         console.log(`Skipping rollQueue for ${id} due to recent update`);
         return;
       }
-
+      if(!pb.admins.client.authStore.isValid){
+        await pb.admins.authWithPassword(process.env.ADMIN_EMAIL || "", process.env.ADMIN_PASSWORD || "")
+      }
       count++;
       for (const d of queue) {
+        
         await pb.admins.client.collection(d.collection).update(d.id, d.data);
         console.log(`Queue rolled ${count} times`);
       }
@@ -361,7 +364,7 @@ export default class CrudManager {
       default:
         try {
   
-          if(!pb.authStore.isValid){
+          if(!pb.admins.client.authStore.isValid){
             await this.relogin()
           }
  
@@ -451,7 +454,7 @@ export default class CrudManager {
           isValid: false,
         };
       default:
-        if(!pb.authStore.isValid){
+        if(!pb.admins.client.authStore.isValid){
           await this.relogin()
         }
         try {
@@ -541,7 +544,7 @@ export default class CrudManager {
       if (cannotUpdate(data, true)) { 
         return cannotUpdate(data, true);
       }
-      if(!pb.authStore.isValid){
+      if(!pb.admins.client.authStore.isValid){
         await this.relogin()
       }
  
@@ -699,6 +702,50 @@ export default class CrudManager {
     token: string;
     session: string;
   }) {
+
+    switch (true) {
+      case !data.key ||
+        !data.collection ||
+        !data.token ||
+        !data.id ||
+        !data.session:
+        return {
+          error: true,
+          message:
+            "key, collection, token, id, and session are required",
+        };
+      case !(await this.tokenManager.isValid(data.token, true)) ||
+        this.tokenManager.decodeToken(data.token).id !== data.id:
+        return {
+          ...new ErrorHandler(data).handle({ code: ErrorCodes.INVALID_TOKEN }),
+          key: data.key,
+          session: data.session,
+          isValid: false,
+        };
+      default:
+        try {
+          if(!pb.admins.client.authStore.isValid){
+            await this.relogin()
+          }
+          let d = await this.pb.admins.client.collection(data.collection).delete(data.id);
+          return {
+            error: false,
+            message: "success",
+            key: data.key,
+            data: d,
+            session: data.session,
+          };
+        } catch (error) {
+          console.log(error);
+          return {
+            ...new ErrorHandler(error).handle({
+              code: ErrorCodes.DATABASE_ERROR
+            }),
+            key: data.key,
+            session: data.session,
+          };
+        }
+    }
     
   }
   public async get(data: {
@@ -788,7 +835,7 @@ export default class CrudManager {
         };
       default:
          try {
-          if(!pb.authStore.isValid){
+          if(!pb.admins.client.authStore.isValid){
             console.log("Re-Authenticating")
             await this.relogin()
           }
@@ -845,8 +892,7 @@ export default class CrudManager {
             data: d,
             session: session,
           };
-         } catch (error) {
-          console.log(error);
+         } catch (error) { 
           return {
             ...new ErrorHandler(error).handle({
               code: ErrorCodes.DATABASE_ERROR
