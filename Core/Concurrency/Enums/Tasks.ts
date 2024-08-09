@@ -1,0 +1,6 @@
+export enum Tasks {
+    FILTER_THROUGH_LIST = "FILTER_THROUGH_LIST", 
+    LOOP = "LOOP",
+    SEND_EMAIL = "SEND_EMAIL",
+    UPDATE_CACHE = "UPDATE_CACHE",
+}
