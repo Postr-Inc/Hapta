@@ -1,0 +1,19 @@
+[database]
+ AdminEmail = ""
+ AdminPassword = ""
+ DatabaseURL = ""
+
+[server]
+   Port = 8080
+   Nodes = ["current"] #current or url to another hapta instance
+   threads = 4 #When processing posts hapta uses other threads to eliminate harsh load on main thread - it also automatically assigns more depending on if needed
+
+[security]
+    Secret = ""
+ 
+[ratelimits] 
+   Max = 100
+   Duration = 60
+   IP = true
+   Message = "You have reached the maximum number of requests per minute"
+    
