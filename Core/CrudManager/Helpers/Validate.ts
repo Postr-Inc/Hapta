@@ -48,12 +48,14 @@ export default async function Validate(data: any, method: string, token?: string
 
                     // Check authorization for each field
                     Object.keys(data.fields).forEach((field) => {
-                        if (id !== decodedId && canUpdateIfOwner.indexOf(field) === -1) {
+                        console.log(field)
+                        if (id !== decodedId && canUpdateIfOwner.includes(field)) {
+                            console.log(true)
                             error = {
                                 opCode: ErrorCodes.UNAUTHORIZED_REQUEST,
                                 payload: { message: "You are not authorized to perform this action" }
                             };
-                        } else if (id === decodedId && canUpdateIfNotOwner.indexOf(field) === -1) {
+                        } else if (id === decodedId && canUpdateIfNotOwner.includes(field)) {
                             error = {
                                 opCode: ErrorCodes.UNAUTHORIZED_REQUEST,
                                 payload: { message: "You are not authorized to perform this action" }
@@ -83,6 +85,26 @@ export default async function Validate(data: any, method: string, token?: string
                             };
                         }  
                     }); 
+                    break;
+                case "comments":
+                    let canUpdateIfOwnerComment = ["content", "author", "post"];
+                    let comment = cache.get(`comments_${id}`) || await pb.collection("comments").getOne(id, { cache: "force-cache" });
+                    cache.set(`comments_${id}`, comment, new Date().getTime() + 3600);
+                    if (!comment) {
+                        error = {
+                            opCode: ErrorCodes.NOT_FOUND,
+                            payload: { message: "Comment not found" }
+                        };
+                        break;
+                    }
+                    Object.keys(data.fields).forEach((field) => {
+                        if (comment.author !== decodedId && canUpdateIfOwnerComment.includes(field)) {
+                            error = {
+                                opCode: ErrorCodes.UNAUTHORIZED_REQUEST,
+                                payload: { message: "You are not authorized to perform this action" }
+                            };
+                        }
+                    });
                     break;
                 
 

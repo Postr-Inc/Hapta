@@ -16,6 +16,8 @@ export const enum ErrorCodes {
     DATABASE_AUTH_FAILED = 501, 
     CONFIGURATION_ERROR = 502, 
     SYSTEM_ERROR = 503,
+    MISSING_EMAIL = 504,
+    INTERNAL_SERVER_ERROR = 505
 }
 
 export const enum ErrorTypes {
@@ -41,5 +43,7 @@ export const ErrorMessages = {
    [ErrorCodes.MISSING_PASSWORD]: 'Password is missing',
    [ErrorCodes.MISSING_IP_ADDRESS]: 'IP Address is missing',
    [ErrorCodes.UNAUTHORIZED_REQUEST]: 'Unauthorized request',
+   [ErrorCodes.MISSING_EMAIL]: 'Email is missing',
+    [ErrorCodes.INTERNAL_SERVER_ERROR]: 'Internal server error',
     
 }

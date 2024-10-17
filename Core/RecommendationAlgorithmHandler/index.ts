@@ -20,8 +20,8 @@ export default class RecommendationAlgorithmHandler {
     let recommended = this.data.filter((item: Post) => {  
         const input = textToVector(item.content, vocabulary);
         const output = neuralNetwork.forward(input);
-        const predictedIndex = output.indexOf(Math.max(...output));
-        const summary = summaryVocabulary[predictedIndex] as string; 
+        const summary = summaryVocabulary[output.indexOf(Math.max(...output))];
+        console.log({summary})
         item.rank = this.rank(item);
         if(item.expand.author.hasOwnProperty("expand") && item.expand.author.expand.hasOwnProperty("TypesOfContentPosted") && !item.expand.author.expand.TypesOfContentPosted.includes(summary)){
             item.rank -= Ranks.offTopicPenalty;
@@ -54,8 +54,8 @@ export default class RecommendationAlgorithmHandler {
      rank += item.likes.length * Ranks.likesBoost;
      rank += item.people_who_reposted.length * Ranks.repostsBoost;  
      rank += Math.floor(item.expand.author.followers.length / 100) * Ranks.authorFollowersBoost; 
-     rank += Math.floor(item.blocks.length / 100) * Ranks.authorBlocksPenalty; 
-     rank += Math.floor(item.expand.author.muted.length / 100) * Ranks.authorMutesPenalty;
+     rank -= Math.floor(item.blocks.length / 100) * Ranks.authorBlocksPenalty; 
+     rank -= Math.floor(item.expand.author.muted.length / 100) * Ranks.authorMutesPenalty;
      item.isNSFW ?  rank -= Ranks.isNSFWPenalty : void 0;  
      item.files.length > 0 ? rank += Ranks.hasMediaBoost : void 0; 
      item.expand.author.TypeOfContentPosted.length < 1 ? rank -= Ranks.offTopicPenalty : void 0;

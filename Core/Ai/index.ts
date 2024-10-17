@@ -26,15 +26,15 @@ class NeuralNetwork {
     forward(input) {
         this.input = input;
 
-        // Calculate hidden layer
+        // Calculate hidden layer values
         this.hidden = Array.from({ length: this.hiddenSize }, (_, i) =>
-            sigmoid(this.input.reduce((sum, value, j) => sum + value * this.weights1[i * this.inputSize + j], 0))
-        );
+            this.weights1.slice(i * this.inputSize, (i + 1) * this.inputSize).reduce((sum, weight, j) => sum + weight * input[j], 0)
+        ).map(sigmoid);
 
-        // Calculate output layer
+        // Calculate output layer values
         this.output = Array.from({ length: this.outputSize }, (_, i) =>
-            sigmoid(this.hidden.reduce((sum, value, j) => sum + value * this.weights2[i * this.hiddenSize + j], 0))
-        );
+            this.weights2.slice(i * this.hiddenSize, (i + 1) * this.hiddenSize).reduce((sum, weight, j) => sum + weight * this.hidden[j], 0)
+        ).map(sigmoid);
 
         return this.output;
     }
@@ -128,10 +128,11 @@ class NeuralNetwork {
 
 // Convert text to vector based on vocabulary
 function textToVector(text, vocabulary) {
+    const words = text.split(/\W+/);
     const vector = Array.from({ length: vocabulary.length }, () => 0);
-    text.split(/\W+/).forEach(word => {
+    words.forEach(word => {
         const index = vocabulary.indexOf(word.toLowerCase());
-        if (index !== -1) vector[index] = 1;
+        if (index !== -1) vector[index] += 1;
     });
     return vector;
 }
@@ -144,6 +145,17 @@ function summaryToTarget(summary, summaryVocabulary) {
     return vector;
 }
 
+function generateHashtext(text) { 
+     const words = text.split(" ");
+     const hashTags = words.filter(word => word.startsWith("#"));
+     // now makeUp some hash tags
+     const hashTagCount = Math.floor(Math.random() * 3) + 1;
+     for (let i = 0; i < hashTagCount; i++) {
+         const word = words[Math.floor(Math.random() * words.length)];
+         hashTags.push("#" + word);
+     }
+     return hashTags;
+}
 // Create vocabulary and summary vocabulary
 const vocabulary = Array.from(new Set(
     trainingData.flatMap(data => data.text.split(/\W+/).map(word => word.toLowerCase()))
@@ -186,4 +198,4 @@ const trainInterval = setInterval(() => {
  
  
 
-export  {NeuralNetwork, textToVector, summaryToTarget, vocabulary, summaryVocabulary, neuralNetwork, testData}
+export  {NeuralNetwork, textToVector, summaryToTarget, vocabulary, summaryVocabulary, neuralNetwork, testData, generateHashtext}

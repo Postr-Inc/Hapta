@@ -1,8 +1,9 @@
+//@ts-nocheck
 import { Hono } from "hono";
 import { HttpCodes } from "../Enums/HttpCodes";
 import { createBunWebSocket } from "hono/bun";
 import Pocketbase from "pocketbase";
-import config from "../config.toml";
+import config from "../config.toml"; 
 import { webSocketLimiter } from "hono-rate-limiter";
 import { rateLimiter } from "hono-rate-limiter";
 import { bearerAuth } from "hono/bearer-auth"
@@ -16,7 +17,7 @@ import {
   setSignedCookie,
   deleteCookie,
 } from "hono/cookie";
-globalThis.version = "1.7.0";
+globalThis.version = "1.8.0";
 import { NeuralNetwork, summaryToTarget, summaryVocabulary, textToVector, vocabulary, neuralNetwork } from "../Core/Ai";
 
  
@@ -63,11 +64,11 @@ export {
 }
 pb.admins.client.autoCancellation(false);
 
-try { 
+try {  
   await pb.admins.authWithPassword(config.database.AdminEmail, config.database.AdminPassword, {
     autoRefreshThreshold: 1000,
   });
-} catch (error) {
+} catch (error) { 
   console.error({
     message: ErrorMessages[ErrorCodes.DATABASE_AUTH_FAILED],
     status: ErrorCodes.DATABASE_AUTH_FAILED,
@@ -98,29 +99,28 @@ const limiter =
     : null;
 
   const wsLimiter = webSocketLimiter({
-    windowMs: 100,
+    windowMs: 15 * 60 * 1000,
     limit: 300,
     keyGenerator: (c) =>  String(getCookie(c, "Authorization")),
     message: "You have exceeded the 300 requests in 15 minutes limit!",
   }); 
     app.use('*', cors({
-      origin: 'http://localhost:3000',
-      allowHeaders: ['Content-Type', 'Authorization', 'user-agent'],
-      allowMethods: ['POST', 'GET', 'OPTIONS'],
+      origin:  '*',
+      allowHeaders: ['Content-Type', 'Authorization', 'user-agent', 'Upgrade', 'Connection', 'Sec-WebSocket-Key', 'Sec-WebSocket-Extensions', 'Sec-WebSocket-Version'],
+      allowMethods: ['POST', 'GET', 'OPTIONS', 'PUT', 'DELETE', 'PATCH', 'HEAD'],
       exposeHeaders: ['Content-Length', 'X-Content-Ranges'],
       maxAge: 600,
       credentials: true,
   }))
-    app.options('*', (c) => {
-      console.log('options')
-      c.header('Access-Control-Allow-Origin', '*')
+    app.options('*', (c) => { 
+      c.header('Access-Control-Allow-Origin',   '*')
       c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE')
       c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, user-agent')
       return c.text('', 204)
     })
 
 app.get("/", (c) => {
-  return c.text("Hello Hono!");
+  return c.json({ status: HttpCodes.OK, message: "Server is running" });
 });
 
 app.get("/health", (c) => { 
@@ -138,10 +138,26 @@ app.get("/api/files/:collection/:id/:file", (c) => {
   c.header("Cache-Control", "public, max-age=31536000");
   c.header("Expires", new Date(Date.now() + 31536000000).toUTCString());
   return fetch(u, {
+    //@ts-ignore
      cache: "force-cache",
   });
 });
 
+app.post('/auth/resetPassword', async (c) => {
+  let { resetToken, password } = await c.req.json() as any;
+  if(!resetToken || !password){
+    return c.json({ status: ErrorCodes.FIELD_MISSING, message: ErrorMessages[ErrorCodes.FIELD_MISSING] , missing: !resetToken ? 'resetToken' : 'password'})
+  }
+  return _AuthHandler.resetPassword(resetToken, password, c)
+})
+
+app.post('/auth/requestPasswordReset', async (c) => {
+  let { email } = await c.req.json() as any;
+  if(!email){
+    return c.json({ status: ErrorCodes.MISSING_EMAIL, message: ErrorMessages[ErrorCodes.MISSING_EMAIL] })
+  }
+  return _AuthHandler.requestPasswordReset(email, c)
+})
 /**
  * @description concurrency is used to maximize the performance of server by handling intensive tasks in the background
  */
@@ -162,6 +178,42 @@ app.post("/auth/login", async (c) => {
   return _AuthHandler.login(emailOrUsername, password, deviceInfo, ipAddress, c)
 });
 
+
+const rqHandler = new RequestHandler()
+
+
+app.post("/collection/:collection", async (c) => {
+  let { collection } = c.req.param();
+  let { type, payload, security, callback } = await c.req.json() as any;
+
+  const token =  c.req.header('Authorization');
+  if (!token || !_AuthHandler.tokenStore.has(token) || !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")) {
+    return c.json({
+      status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
+      message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
+    });
+  } 
+  let d = await rqHandler.handleMessage(c, { type, payload, callback }, token)  
+  return c.json(d)
+});
+
+app.post("/auth/check", async (c) => {
+  let { email, username } = await c.req.json() as any;
+  if (!email && !username) {
+    console.log('Missing email or username')
+    return c.json({ status: ErrorCodes.MISSING_EMAIL, message: ErrorMessages[ErrorCodes.MISSING_EMAIL] });
+  }
+  return _AuthHandler.check(email, username, c);
+})
+
+
+app.post("/auth/register", async (c) => {
+  let { email, password, username, dob } = await c.req.json() as any;
+  if (!email || !password || !username || !dob) {
+    return c.json({ status: ErrorCodes.FIELD_MISSING, message: ErrorMessages[ErrorCodes.FIELD_MISSING] });
+  }
+  return _AuthHandler.register(email, password, username, dob, c);
+})
 
 app.get("/auth/verify", async (c) => {
   let token = c.req.header('Authorization')
@@ -212,69 +264,7 @@ app.post("/auth/refreshtoken", async (c) => {
 })
  
 
-app.use("/ws/*", async (c, next) => { 
-  const token = getCookie(c, "Authorization"); 
-  const ip =  getCookie(c, "ipAddress"); 
-  if (!token || !_AuthHandler.tokenStore.has(token) || !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")) {
-    console.log(token, _AuthHandler.tokenStore.has(token), verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256"))  
-    c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN)
-     throw new HTTPException(ErrorCodes.INVALID_OR_MISSING_TOKEN, {
-      message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
-     })
-  }    
-  else if(_AuthHandler.ipStore.get(token)  === undefined || _AuthHandler.ipStore.get(token) !== ip){
-    console.log(_AuthHandler.ipStore.get(token), ip)
-    c.status(ErrorCodes.UNAUTHORIZED_REQUEST)
-    throw new HTTPException(ErrorCodes.UNAUTHORIZED_REQUEST, {
-      message: ErrorMessages[ErrorCodes.UNAUTHORIZED_REQUEST],
-    })
-  } 
-  await next()
-});
-const rqHandler = new RequestHandler()
-
-app.get(
-  "/ws",
-  upgradeWebSocket(wsLimiter((ws)=>{
-    return {
-      onMessage: (event, ws) => {
-        try {
-          let { type, payload, security, callback } = JSON.parse(event.data as string);
-
-          if (security && security.token && !_AuthHandler.tokenStore.has(security.token)) {
-            return ws.send(
-              JSON.stringify({
-                opCode: ErrorCodes.INVALID_OR_MISSING_TOKEN,
-                payload: {
-                  message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
-                },
-              })
-            );
-          }else if (!security || !security.token) {
-            return ws.send(
-              JSON.stringify({
-                 opCode: ErrorCodes.INVALID_OR_MISSING_TOKEN,
-                 payload: {
-                   message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
-                 }
-              })
-            );
-          } 
-          rqHandler.handleMessage(ws, {payload, callback, type} , security.token)
-        } catch (error) {
-           ws.send(
-            JSON.stringify({
-              opCode: ErrorCodes.INVALID_REQUEST,
-              payload: {
-                message: ErrorMessages[ErrorCodes.INVALID_REQUEST],
-              },
-            })
-           )
-        }
-      },  
-    };
-  }))
-);
+ 
 
 if (limiter) {
   app.use(limiter);
@@ -284,8 +274,7 @@ if (limiter) {
 
 Bun.serve({
   port: config.server.Port || 3000,
-  fetch: app.fetch,
-  websocket,
+  fetch: app.fetch, 
 });
 
 console.log(` 
@@ -298,3 +287,8 @@ console.log(`
             Port: ${config.server.Port || 3000}
             SSL: ${config.server.SSL || false}
 `)
+
+
+process.on("beforeExit", async () => {
+     await rqHandler.crudManager.saveChanges()
+});

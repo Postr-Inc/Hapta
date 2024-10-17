@@ -1,10 +1,11 @@
- 
 interface Task {
   task: string;
   data: any;
   resolve: (value: any) => void;
   reject: (reason?: any) => void;
 }
+
+import _worker from "./worker/worker.txt"
 
 export default class Concurrency {
   threadCount: number;
@@ -26,7 +27,7 @@ export default class Concurrency {
   }
   private createWorker(index: number) {
     //@ts-ignore
-    const worker = new Worker(new URL("./worker/index.ts", import.meta.url).href);
+    const worker = new Worker(URL.createObjectURL(new Blob([_worker], { type: "application/javascript" })));
 
     worker.onmessage = (e) => {
       const { threadIndex, result } = e.data; 
