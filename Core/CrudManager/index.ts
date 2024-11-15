@@ -257,7 +257,7 @@ export default class CrudManager {
         payload.page,
         payload.options?.recommended ? Number.MAX_SAFE_INTEGER : payload.limit,
         {
-          sort: payload.options?.order === "asc" ? "created" : "-created",
+          sort: payload.options?.order === "asc" ? "created" : "-created" + (payload.options?.sort ? `,${payload.options.sort}` : ""),
           filter: payload.options?.filter,
           expand: joinExpand(payload.options?.expand || [], payload.collection, "list"),
           cache: "force-cache",
