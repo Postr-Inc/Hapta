@@ -1,17 +1,21 @@
 export enum Tasks {
-  FILTER_THROUGH_LIST = "FILTER_THROUGH_LIST", 
+  FILTER_THROUGH_LIST = "FILTER_THROUGH_LIST",
   LOOP = "LOOP",
   SEND_EMAIL = "SEND_EMAIL",
   UPDATE_CACHE = "UPDATE_CACHE",
+  DEEP_SEARCH = "DEEP_SEARCH",
 }
 type TaskCallback = (data: any) => any;
-type TaskCallbackWithCollection = (data: {list: any[], collection: string}) => any;
+type TaskCallbackWithCollection = (data: {
+  list: any[];
+  collection: string;
+}) => any;
 
 interface Task {
   task: string;
   cb: TaskCallback | TaskCallbackWithCollection;
 }
- 
+
 class _Worker {
   tasks: Task[];
 
@@ -20,19 +24,19 @@ class _Worker {
     self.onmessage = this.handleMessage.bind(this);
   }
 
-  private handleMessage(event: MessageEvent) { 
+  private handleMessage(event: MessageEvent) {
     try {
       const { task, data, threadIndex } = event.data;
       const _task = this.tasks.find((t) => t.task === task);
 
       if (_task) {
-        const result = _task.cb(data); 
+        const result = _task.cb(data);
         self.postMessage({ threadIndex, result });
       } else {
         console.warn(`Task "${task}" not found.`);
         self.postMessage({ threadIndex, result: null });
       }
-    } catch (error) { 
+    } catch (error) {
       console.error("Error handling message in worker:", error);
       const threadIndex = event.data.threadIndex;
       self.postMessage({ threadIndex, error });
@@ -46,7 +50,7 @@ class _Worker {
 
 // Example usage:
 const worker = new _Worker();
-worker.on(Tasks.LOOP, (data: number[]) => { 
+worker.on(Tasks.LOOP, (data: number[]) => {
   const sum = data.reduce((acc, n) => acc + n, 0);
   return sum;
 });
@@ -58,11 +62,11 @@ interface Post {
 // Helper function to filter emails recursively
 const filterEmailsRecursive = (data: any): any => {
   if (Array.isArray(data)) {
-    return data.map(item => filterEmailsRecursive(item));
-  } else if (data && typeof data === 'object') {
+    return data.map((item) => filterEmailsRecursive(item));
+  } else if (data && typeof data === "object") {
     const newData = { ...data };
     Object.keys(newData).forEach((key) => {
-      if (key === 'email') {
+      if (key === "email") {
         delete newData[key];
       } else {
         newData[key] = filterEmailsRecursive(newData[key]);
@@ -78,19 +82,39 @@ const filterEmails = (post: Post): Post => {
   return filterEmailsRecursive(post);
 };
 
-worker.on(Tasks.FILTER_THROUGH_LIST, (data: {list: any[], collection: string}) => {
+worker.on(
+  Tasks.FILTER_THROUGH_LIST,
+  (data: { list: any[]; collection: string }) => {
     let { list, collection } = data;
-    console.log(`Filtering through list of ${list.length} items in collection ${collection}`);
-    switch(collection){
+    console.log(
+      `Filtering through list of ${list.length} items in collection ${collection}`
+    );
+    switch (collection) {
       case "users":
-        return list.map(filterEmails) 
+        return list.map(filterEmails);
       case "posts":
-       return list.map(filterEmails);
+        return list.map(filterEmails);
       case "comments":
-       return list.map(filterEmails);
+        return list.map(filterEmails);
     }
+  }
+);
+
+worker.on(Tasks.DEEP_SEARCH, (data: { list: any[]; query: string }) => {
+  let { list, query } = data;
+  console.log(
+    `Deep searching through list of ${list.length} items for query ${query}`
+  );
+  let results = [];
+  // find all string instances of query in list
+  list.forEach((item) => {
+    // each item is an object
+    Object.keys(item).forEach((key) => {
+      if (typeof item[key] === "string" && item[key].includes(query)) {
+        results.push(item);
+      }
+    });
+  });
+  return results;
 });
-
 export default worker;
-
- 

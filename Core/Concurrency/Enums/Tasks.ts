@@ -3,4 +3,5 @@ export enum Tasks {
     LOOP = "LOOP",
     SEND_EMAIL = "SEND_EMAIL",
     UPDATE_CACHE = "UPDATE_CACHE",
+    DEEP_SEARCH = "DEEP_SEARCH",
 }

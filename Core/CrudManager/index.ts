@@ -176,6 +176,7 @@ export default class CrudManager {
     collection: string;
     data: any;
     expand: any[];
+    invalidateCache?: [string];
   }, token: string) {
     let hasIssue = await Validate(payload, "create", token, this.cache);
     if (hasIssue) return hasIssue;
@@ -190,6 +191,13 @@ export default class CrudManager {
           expand: joinExpand(payload.expand, payload.collection, "create"),
         }),
       });
+    
+      if(payload.invalidateCache){
+        console.log("Invalidating cache", payload.invalidateCache);
+        for(let key of payload.invalidateCache){
+          this.cache.delete(key);
+        }
+      }
 
       if (payload.collection === "posts") {
         let hashTags = generateHashtext(payload.data.content);
@@ -245,6 +253,7 @@ export default class CrudManager {
       `${payload.collection}_list_${JSON.stringify(payload.options)}_${payload.page}_${payload.limit}_${decode(token).payload.id}`;
      const cacheData = this.cache.get(cacheKey) ? this.cache.get(cacheKey) : null;
 
+     console.log("Cache key", cacheKey, cacheData);
     if (cacheData) {
       return { opCode: HttpCodes.OK, ...cacheData };
     }
@@ -253,9 +262,7 @@ export default class CrudManager {
     if (hasIssue) return hasIssue;
 
     try {
-      const data = await this.pb.collection(payload.collection).getList(
-        payload.page,
-        payload.options?.recommended ? Number.MAX_SAFE_INTEGER : payload.limit,
+      var data = await this.pb.collection(payload.collection).getFullList( 
         {
           sort: payload.options?.order === "asc" ? "created" : "-created" + (payload.options?.sort ? `,${payload.options.sort}` : ""),
           filter: payload.options?.filter,
@@ -263,27 +270,39 @@ export default class CrudManager {
           cache: "force-cache",
         }
       );
-
-      let processed = await c.run(Tasks.FILTER_THROUGH_LIST, {
-        list: data.items,
+      data  = await c.run(Tasks.FILTER_THROUGH_LIST, {
+        list : data,
         collection: payload.collection,
-      });
-
-      console.log(Array.isArray(processed));
+      })
+      if (payload.collection === "posts" && data.length > 0 && payload.options?.sort?.includes("-pinned")) {
+        let pinned = data.filter((post: any) => post.pinned);
+        let unpinned = data.filter((post: any) => !post.pinned);
+        data = [...pinned, ...unpinned];
+      }
+     
+      const paginatedItems = data.slice((payload.page - 1) * payload.limit, payload.page * payload.limit);
+  
+      const response = {
+        _payload: paginatedItems,
+        totalItems: data.length,
+        totalPages: Math.ceil(data.length / payload.limit),
+        opCode: HttpCodes.OK,
+      };
+        
       this.cache.set(
         cacheKey,
         {
-          _payload: processed,
-          totalItems: data.totalItems,
-          totalPages: data.totalPages,
+          _payload:  response._payload,
+          totalItems:  response.totalItems,
+          totalPages:  response.totalPages,
         },
         Date.now() + 3600 * 1000 // 1 hour
       );
 
       return {
-        _payload: processed,
-        totalItems: data.totalItems,
-        totalPages: data.totalPages,
+        _payload: response._payload,
+        totalItems:  response.totalItems,
+        totalPages: response.totalPages,
         opCode: HttpCodes.OK,
       };
     } catch (error) {
@@ -383,28 +402,8 @@ export default class CrudManager {
           expand: joinExpand(payload.expand, payload.collection, "update"),
         }),
       });
-
-      for (let key of keys) { 
-        let cacheData = this.cache.get(key);
-        if (Array.isArray(cacheData._payload)) {
-          let exists = cacheData._payload.find((item: any) => item.id === payload.id);
-          if (exists) {
-            cacheData._payload = cacheData._payload.map((item: any) => {
-              if (item.id === payload.id) {
-                return { ...item, ...payload.fields };
-              }
-              return item;
-            }); 
-            this.cache.set(key, cacheData, Date.now() + 3600 * 1000); // 1 hour
-          }
-        }else{ 
-          if("_payload" in cacheData && cacheData._payload.id === payload.id){
-            cacheData._payload = { ...cacheData._payload, ...payload.fields };
-            this.cache.set(key, cacheData, Date.now() + 3600 * 1000); // 1 hour
-          }  
-        }
-      }
-
+  
+      this.cache.updateAllOccurrences(payload.collection, { id: payload.id, fields: payload.fields });
       return { _payload: res, opCode: HttpCodes.OK };
     } catch (error) {
       console.error("Error updating record", error);

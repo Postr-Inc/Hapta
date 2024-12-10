@@ -36,7 +36,8 @@ export default class AuthHandler{
      }
      public async requestPasswordReset(email: string, hono: any){
         try {
-            await this.pb.collection('users').requestPasswordReset(email)
+            let out =  await this.pb.collection('users').requestPasswordReset(email)
+            console.log(out)
             return hono.json({
                 status: HttpCodes.OK,
                 message: 'Password Reset Request Sent'
@@ -149,6 +150,7 @@ export default class AuthHandler{
                 }
             })
          } catch (error) {    
+            console.log(error)
             hono.status(ErrorCodes.AUTHORIZATION_FAILED)
             return hono.json({
                 status: ErrorCodes.AUTHORIZATION_FAILED,

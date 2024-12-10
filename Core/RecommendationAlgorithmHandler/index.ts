@@ -13,6 +13,7 @@ export default class RecommendationAlgorithmHandler {
     this.data = data._payload as Post[];
     this.totalPages = data.totalPages;
     this.totalItems = data.totalItems
+    console.log(this.totalItems, this.totalPages)
     cache.set(`recommendationData`, this.data);
   }
 
