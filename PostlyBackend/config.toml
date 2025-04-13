@@ -1,0 +1,20 @@
+[Security]
+ TokenSecret = "asapy67890*"
+
+[RateLimits]
+   [tier1]
+     [reads]
+       limit = 50
+       timeWindow = '30m'
+     [writes]
+       limit = 20
+       timeWindow = '20m'
+
+   [tier2]
+     [reads]
+       limit = 500
+       timeWindow = '1h'
+     [writes]
+        limit = 50
+        timeWindow = '20m'
+    
