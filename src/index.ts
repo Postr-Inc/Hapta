@@ -18,7 +18,7 @@ import {
   setSignedCookie,
   deleteCookie,
 } from "hono/cookie";
-globalThis.version = "1.8.0";
+globalThis.version = "1.8.2";
 import {
   NeuralNetwork,
   summaryToTarget,
@@ -161,11 +161,17 @@ app.get("*", (c, next) => {
 
   // get token from cookie
   let token = getCookie(c, "Authorization") || c.req.header("Authorization");
-
+ 
   // check if ip is rate limited
  
 
   let ip = c.req.header("CF-Connecting-IP");
+
+  // check if request is from a web socket
+  if(c.req.header("Upgrade") === "websocket"){
+    // skip next if the request is a web socket
+     return next();
+  }
 
   if(!rt.has(ip)){
     rt.setRateLimit(ip);
@@ -208,6 +214,7 @@ app.get("*", (c, next) => {
       c.status(HttpCodes.OK);
       return next();
     } else {
+      console.log("Invalid or missing token 222");
       c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
       return c.json({
         status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
@@ -222,13 +229,14 @@ app.get("*", (c, next) => {
 });
 
 app.get(
-  "/realtime",
+  "/subscriptions",
   upgradeWebSocket((c) => {
     return {
       async onMessage(event, ws) {
         try {
           let { payload, security, callback } = JSON.parse(event.data);
           // check if token is signed and valid
+          
           if (
             !security || !security.hasOwnProperty("token") || 
             !_AuthHandler.tokenStore.has(security.token) ||
@@ -236,21 +244,45 @@ app.get(
               security.token,
               _AuthHandler.tokenStore.get(security.token) as string,
               "HS256"
-            ) ||
-            _AuthHandler.ipStore.get(security.token) !==
-              c.req.header("CF-Connecting-IP")
-          ) {
-            console.log("Invalid or missing token");
-            ws.send(
-              JSON.stringify({
-                status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
-                message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
-              })
-            );
-            ws.close();
+            )  
+          ) { 
+            
             return;
           }
-          console.log("Connected");
+ 
+          
+         switch (payload.type) {
+          case MessageTypes.AUTH_ROLL_TOKEN:
+            // check if the user is authorized to roll a new token
+            let tokenData = decode(security.token) as any;
+            let userID = tokenData.payload.id;
+            console.log("Rolling new token for user:", userID);
+            let newToken =  await _AuthHandler.rollNewToken(security.token, tokenData)
+            console.log("Rolling new token for user:", userID, "New Token:", newToken);
+            if (!newToken) {
+              ws.send(
+                JSON.stringify({
+                  status: ErrorCodes.ROLL_NEW_TOKEN_FAILED,
+                  message: ErrorMessages[ErrorCodes.ROLL_NEW_TOKEN_FAILED],
+                  callback: callback,
+                })
+              );
+              ws.close();
+              return;
+            }
+            ws.send(
+              JSON.stringify({
+                status: HttpCodes.OK,
+                message: "New token rolled successfully",
+                data: {
+                  token: newToken,
+                  callback: callback,
+                  type: payload.type,
+                }
+              })
+            )
+            return;
+         }
           ws.send(JSON.stringify({ status: HttpCodes.OK, message: "Connected" }));
           globalThis.listeners.set(ws, { ws, token: security.token });
         } catch (error) {
@@ -421,6 +453,7 @@ app.post("/auth/register", async (c) => {
 
 app.get("/auth/verify", async (c) => {
   let token = c.req.header("Authorization"); 
+  console.log("Token:", token, "Token Store:", _AuthHandler.tokenStore.has(token));
   if (
     !token ||
     !_AuthHandler.tokenStore.has(token) ||
@@ -428,8 +461,7 @@ app.get("/auth/verify", async (c) => {
       token,
       _AuthHandler.tokenStore.get(token) as string,
       "HS256"
-    )) ||
-    _AuthHandler.ipStore.get(token) !== c.req.header("CF-Connecting-IP")
+    )) 
   ) {
     c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
     return c.json({
