@@ -21,8 +21,8 @@ function appendToQueue(data: any, cancelPrevious = true, method: QueueMethod) {
     method === "create"
       ? createQueue
       : method === "delete"
-      ? deleteQueue
-      : updateQueue;
+        ? deleteQueue
+        : updateQueue;
 
   if (cancelPrevious) {
     queueMap.set(data.id, [data.fields]);
@@ -191,10 +191,10 @@ export default class CrudManager {
           expand: joinExpand(payload.expand, payload.collection, "create"),
         }),
       });
-    
-      if(payload.invalidateCache){
+
+      if (payload.invalidateCache) {
         console.log("Invalidating cache", payload.invalidateCache);
-        for(let key of payload.invalidateCache){
+        for (let key of payload.invalidateCache) {
           this.cache.delete(key);
         }
       }
@@ -207,13 +207,13 @@ export default class CrudManager {
             posts: [res.id],
           };
           console.log("Creating hashtag", hashTag);
-          await this.pb.collection("hashtags").create(hashTag);
-          await this.pb.collection("posts").update(res.id, { hashtags: [...res.hashtags, tag] });
+          var h = await this.pb.collection("hashtags").create(hashTag);
+          await this.pb.collection("posts").update(res.id, { hashtags: [...res.hashtags, h.id] });
         }
       }
 
-      return { _payload: res, opCode: HttpCodes.OK , message: "Record created successfully" };
-    } catch (error) { 
+      return { _payload: res, opCode: HttpCodes.OK, message: "Record created successfully" };
+    } catch (error) {
       console.error("Error creating record", error);
       return {
         _payload: null,
@@ -248,21 +248,22 @@ export default class CrudManager {
       recommended?: boolean;
     };
   }, token: string) {
+    const stableOptions = {
+      filter: payload.options?.filter,
+      sort: payload.options?.sort,
+      order: payload.options?.order,
+      expand: payload.options?.expand,
+    };
     const cacheKey =
       payload.cacheKey ||
-      `${payload.collection}_list_${JSON.stringify(payload.options)}_${payload.page}_${payload.limit}_${decode(token).payload.id}`;
-     const cacheData = this.cache.get(cacheKey) ? this.cache.get(cacheKey) : null;
-
-     console.log("Cache key", cacheKey, cacheData);
-    if (cacheData) {
-      return { opCode: HttpCodes.OK, ...cacheData };
-    }
+      `${payload.collection}_list_${JSON.stringify(stableOptions)}`;
 
     let hasIssue = await Validate(payload, "list");
     if (hasIssue) return hasIssue;
 
     try {
-      var data = await this.pb.collection(payload.collection).getFullList( 
+      console.log("Listing records for collection:", payload.collection);
+      var data = await this.pb.collection(payload.collection).getFullList(
         {
           sort: payload.options?.order === "asc" ? "created" : "-created" + (payload.options?.sort ? `,${payload.options.sort}` : ""),
           filter: payload.options?.filter,
@@ -270,38 +271,53 @@ export default class CrudManager {
           cache: "force-cache",
         }
       );
-      data  = await c.run(Tasks.FILTER_THROUGH_LIST, {
-        list : data,
+      // ...existing code...
+      data = await c.run(Tasks.FILTER_THROUGH_LIST, {
+        list: data,
         collection: payload.collection,
       })
-      if (payload.collection === "posts" && data.length > 0 && payload.options?.sort?.includes("-pinned")) {
-        let pinned = data.filter((post: any) => post.pinned);
-        let unpinned = data.filter((post: any) => !post.pinned);
-        data = [...pinned, ...unpinned];
+
+      // Sort pinned first if needed
+      if (
+        payload.collection === "posts" &&
+        data.length > 0 &&
+        payload.options?.sort?.includes("-pinned")
+      ) {
+        data = [
+          ...data.filter((post: any) => post.pinned),
+          ...data.filter((post: any) => !post.pinned),
+        ];
       }
-     
-      const paginatedItems = data.slice((payload.page - 1) * payload.limit, payload.page * payload.limit);
-  
+
+      // Now paginate the sorted data
+      var paginatedItems = data.slice(
+        (payload.page - 1) * payload.limit,
+        payload.page * payload.limit
+      );
+      // ...existing code...
+
       const response = {
         _payload: paginatedItems,
         totalItems: data.length,
         totalPages: Math.ceil(data.length / payload.limit),
         opCode: HttpCodes.OK,
       };
-        
+
+      
+
       this.cache.set(
         cacheKey,
         {
-          _payload:  response._payload,
-          totalItems:  response.totalItems,
-          totalPages:  response.totalPages,
+          _payload: response._payload,
+          totalItems: response.totalItems,
+          totalPages: response.totalPages,
         },
         Date.now() + 3600 * 1000 // 1 hour
       );
 
       return {
         _payload: response._payload,
-        totalItems:  response.totalItems,
+        totalItems: response.totalItems,
         totalPages: response.totalPages,
         opCode: HttpCodes.OK,
       };
@@ -328,7 +344,7 @@ export default class CrudManager {
       }
 
       const data = await this.pb.collection(payload.collection).getOne(payload.id, {
-        ...(payload.options &&  payload.options.expand && {
+        ...(payload.options && payload.options.expand && {
           expand: joinExpand(payload.options.expand, payload.collection, "get"),
         }),
         cache: "force-cache",
@@ -350,7 +366,7 @@ export default class CrudManager {
       return { _payload: processed[0], opCode: HttpCodes.OK };
     } catch (error) {
       console.error("Error getting record", error);
-      return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR , message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
+      return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR, message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
     }
   }
 
@@ -381,7 +397,7 @@ export default class CrudManager {
       return { _payload: null, opCode: HttpCodes.OK };
     } catch (error) {
       console.error("Error deleting record", error);
-      return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR , message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
+      return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR, message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
     }
   }
 
@@ -394,15 +410,13 @@ export default class CrudManager {
   }, token: string) {
     let hasIssue = await Validate(payload, "update", token, this.cache);
     if (hasIssue) return hasIssue;
-    try {
-      const keys = this.cache.keys();
-      
+    try { 
       const res = await this.pb.collection(payload.collection).update(payload.id, payload.fields, {
         ...(payload.expand && {
           expand: joinExpand(payload.expand, payload.collection, "update"),
         }),
       });
-  
+
       this.cache.updateAllOccurrences(payload.collection, { id: payload.id, fields: payload.fields });
       return { _payload: res, opCode: HttpCodes.OK };
     } catch (error) {
