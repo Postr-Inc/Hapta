@@ -18,6 +18,19 @@ export default class AuthHandler{
         this.ipStore = new Map()
      }
 
+     public async rollNewToken(oldToken: string, data: any){
+       let tokenBody = {
+            ...data,
+            exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 // 7 days
+       }
+       let newSig = config.security.Secret + oldToken.split('-')[1] + Math.random().toString(36).substring(2, 15);
+       let newToken = await sign(tokenBody, newSig, "HS256") as string; 
+       this.SuccessFulLogins.set(data.id, oldToken.split('-')[0] + "-" + newToken)
+       this.tokenStore.set(newToken, newSig) 
+       this.tokenStore.delete(oldToken)
+       return newToken;
+     }
+
      public async resetPassword( resetToken: string, password: string, hono: any){
         try {
             await this.pb.collection('users').confirmPasswordReset(resetToken, password, password)
