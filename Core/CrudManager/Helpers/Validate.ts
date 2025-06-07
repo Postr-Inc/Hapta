@@ -66,8 +66,7 @@ export default async function Validate(data: any, method: string, token?: string
 
                 case "posts":
                     let canUpdateIfOwnerPost = ["content", "files", "tags", "privacy", "author"]; 
-                    let post = cache.get(`posts_${id}`) || await pb.collection("posts").getOne(id, { cache: "force-cache" });
-                    cache.set(`posts_${id}`, post, new Date().getTime() + 3600);
+                    let post =  await pb.collection("posts").getOne(id, { cache: "force-cache" }); 
                     if (!post) {
                         error = {
                             opCode: ErrorCodes.NOT_FOUND,
@@ -78,7 +77,7 @@ export default async function Validate(data: any, method: string, token?: string
                     
                     Object.keys(data.fields).forEach((field) => {
                         if (post.author !== decodedId && canUpdateIfOwnerPost.includes(field)) {
-                            console.log(field)
+                             
                             error = {
                                 opCode: ErrorCodes.UNAUTHORIZED_REQUEST,
                                 payload: { message: "You are not authorized to perform this action" }

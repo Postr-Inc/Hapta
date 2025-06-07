@@ -18,7 +18,7 @@ import {
   setSignedCookie,
   deleteCookie,
 } from "hono/cookie";
-globalThis.version = "1.8.2";
+globalThis.version = "1.8.0";
 import {
   NeuralNetwork,
   summaryToTarget,
@@ -34,9 +34,11 @@ import Concurrency from "../Core/Concurrency";
 import RequestHandler from "../Core/RequestHandler";
 import CacheController from "../Core/CacheManager";
 import { MessageTypes } from "../Enums/MessageTypes";
+import EmbedEngine from "../Core/EmbedEngine";
 const { upgradeWebSocket, websocket } = createBunWebSocket();
 globalThis.listeners = new Map();
 const rateLimites = new Map();
+ 
 
 switch (true) {
   case !config.hasOwnProperty("database") ||
@@ -87,6 +89,7 @@ try {
     }
   );
 } catch (error) {
+  console.log(error);
   console.error({
     message: ErrorMessages[ErrorCodes.DATABASE_AUTH_FAILED],
     status: ErrorCodes.DATABASE_AUTH_FAILED,
@@ -193,6 +196,7 @@ app.get("*", (c, next) => {
     c.req.url !== "/auth/refreshtoken" &&
     c.req.url !== "/auth/requestPasswordReset" &&
     c.req.url !== "/auth/resetPassword" &&
+    c.req.url.includes("/embed") == false &&
     c.req.url !== "/auth/login" &&
     c.req.url.includes("/api/files") == false &&
     host?.startsWith("embed") == false &&
@@ -221,10 +225,7 @@ app.get("*", (c, next) => {
         message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
       });
     }
-  }
-
-  console.log(c.req.url);
-  // else continue
+  } 
   return next();
 });
 
@@ -309,6 +310,23 @@ app.options("*", (c) => {
   );
   return c.text("", 204);
 });
+
+app.get("/embed/:collection/:id/:type", async (c)=>{
+  const { collection, id, type} = c.req.param()
+  try { 
+    var Embedder = new EmbedEngine(type, await rqHandler.crudManager.get({collection, id, isEmbed: true, options:{
+      expand: ["author"]
+    }}, ))
+    return c.html(await Embedder.render())
+  } catch (error) {
+    console.log(error)
+    return c.json({
+      error: true,
+      message: ErrorMessages[ErrorCodes.DATABASE_ERROR],
+      status: ErrorCodes.DATABASE_ERROR
+    })
+  } 
+})
 
 app.get("/health", (c) => {
   return c.json({ status: HttpCodes.OK, message: "Server is running" });

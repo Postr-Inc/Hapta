@@ -11,8 +11,7 @@ export default class RequestHandler {
        this.crudManager = new CrudManager(cache, pb);
     }
     async handleMessage(data: {type: string, callback: string, payload: any, ws: any}, token: string) {
-       const {  type, callback, payload, ws } = data;  
-       console.log(type)
+       const {  type, callback, payload, ws } = data;   
        switch(type){
          case MessageTypes.LIST:  
           if(payload.options.hasOwnProperty('recommended') && payload.options.recommended){ 

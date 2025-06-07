@@ -4,4 +4,6 @@ export const enum MessageTypes {
     UPDATE = 'update',
     DELETE = 'delete', 
     GET = 'get',
+    AUTH_ROLL_TOKEN = 'auth_roll_token',
+    CREATE_EMBED = 'create_embed',
 }

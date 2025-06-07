@@ -258,6 +258,11 @@ export default class CrudManager {
       payload.cacheKey ||
       `${payload.collection}_list_${JSON.stringify(stableOptions)}`;
 
+      console.log("Cache key for list:", cacheKey);
+      let cacheData = this.cache.get(cacheKey)
+      if (cacheData) {
+        return { opCode: HttpCodes.OK, ...cacheData };
+      }
     let hasIssue = await Validate(payload, "list");
     if (hasIssue) return hasIssue;
 
@@ -282,7 +287,7 @@ export default class CrudManager {
         payload.collection === "posts" &&
         data.length > 0 &&
         payload.options?.sort?.includes("-pinned")
-      ) {
+      ) { 
         data = [
           ...data.filter((post: any) => post.pinned),
           ...data.filter((post: any) => !post.pinned),
@@ -295,13 +300,15 @@ export default class CrudManager {
         payload.page * payload.limit
       );
       // ...existing code...
-
+ 
       const response = {
         _payload: paginatedItems,
-        totalItems: data.length,
-        totalPages: Math.ceil(data.length / payload.limit),
+        totalItems: paginatedItems.length,
+        totalPages: Math.round(
+          data.length / payload.limit),
         opCode: HttpCodes.OK,
       };
+ 
 
       
 
@@ -329,14 +336,23 @@ export default class CrudManager {
 
   public async get(payload: {
     collection: string;
+    isEmbed: boolean;
     id: string;
     options: { [key: string]: any };
   }, token: string) {
-    let hasIssue = await Validate(payload, "get", token, this.cache);
-    if (hasIssue) return hasIssue;
+    if(!payload.isEmbed){
+       let hasIssue = await Validate(payload, "get", token, this.cache);
+       if (hasIssue) return hasIssue;
+    }
 
     try {
-      const cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}_${decode(token).payload.id}`;
+      var cacheKey;
+      if(payload.isEmbed){
+        cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}}`
+      }else{
+        console.log(payload.isEmbed)
+        cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}_${decode(token).payload.id}`
+      } 
       const cacheData = this.cache.get(cacheKey);
 
       if (cacheData) {

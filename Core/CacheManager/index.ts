@@ -20,6 +20,7 @@ export default class CacheController {
       if (Array.isArray(cacheData?._payload)) {
         const exists = cacheData._payload.some((item: any) => item.id === payload.id);
         if (exists) {
+          
           cacheData._payload = cacheData._payload.map((item: any) =>
             item.id === payload.id ? { ...item, ...payload.fields } : item
           );
@@ -28,31 +29,46 @@ export default class CacheController {
       }
       // Handle objects with _payload
       else if (typeof cacheData === "object" && cacheData !== null) {
+        
+        // Check if _payload exists and matches the id
         if ("_payload" in cacheData && cacheData._payload.id === payload.id) {
-          cacheData._payload = { ...cacheData._payload, ...payload.fields };
+          cacheData._payload = { ...cacheData._payload, ...payload.fields }; 
           this.set(key, cacheData, 60000); // Update cache with expanded fields
-        } else {
-          // General object update
-          cacheData = this.recursivelyUpdate(cacheData, payload.id, payload.fields);
-          this.set(key, cacheData, 60000); // Update cache with expanded fields
-        }
+        } else { 
+          // check if item is in cache and delete cache for that item
+          const updatedData = this.recursivelyUpdate(cacheData, payload.id, payload.fields, key);
+          if (updatedData !== cacheData) {
+            // delete the cache entry if the id is found
+            this.delete(key);
+            console.log("Cache updated for id:", payload.id);
+          }else{
+            console.log("No matching id found in cache for update:", payload.id);
+            console.log("Cache data:", cacheData);
+          }
+        } 
+      }else{
+        console.log("Cache data is not an object or array:", cacheData);  
       }
     }
+
   }
   
   /**
    * Recursively updates occurrences of `id` within a data structure.
    */
-  private recursivelyUpdate(data: any, id: string, fields: any): any {
+  private recursivelyUpdate(data: any, id: string, fields: any, key: string): any {
     if (Array.isArray(data)) {
       return data.map((item) => this.recursivelyUpdate(item, id, fields));
     } else if (typeof data === "object" && data !== null) {
       if (data.id === id) {
-        return { ...data, ...fields };
+        console.log("Updating object with id:", id, "with fields:", fields);
+        return { ...data, ...fields, key: key ? data[key] : undefined };
       }
       const updatedObject = { ...data };
       for (const key in updatedObject) {
-        updatedObject[key] = this.recursivelyUpdate(updatedObject[key], id, fields);
+        if (updatedObject.hasOwnProperty(key)) {
+          updatedObject[key] = this.recursivelyUpdate(updatedObject[key], id, fields);
+        }
       }
       return updatedObject;
     }
