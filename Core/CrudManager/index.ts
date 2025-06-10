@@ -192,11 +192,12 @@ export default class CrudManager {
         }),
       });
 
-      if (payload.invalidateCache) {
-        console.log("Invalidating cache", payload.invalidateCache);
-        for (let key of payload.invalidateCache) {
-          this.cache.delete(key);
-        }
+     if (payload.invalidateCache) { 
+         let cacheKeys = this.cache.keys();
+         let keysToInvalidate = payload.invalidateCache.filter(key => cacheKeys.includes(key));
+          for (let key of keysToInvalidate) {
+            this.cache.delete(key);
+          }
       }
 
       if (payload.collection === "posts") {
