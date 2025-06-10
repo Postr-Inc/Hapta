@@ -172,7 +172,7 @@ export default class CrudManager {
     this.pb = pb;
   }
 
-  public async create(payload: {
+    public async create(payload: {
     collection: string;
     data: any;
     expand: any[];
@@ -192,15 +192,34 @@ export default class CrudManager {
         }),
       });
 
-     if (payload.invalidateCache) { 
-         let cacheKeys = this.cache.keys();
-         let keysToInvalidate = payload.invalidateCache.filter(key => cacheKeys.includes(key));
-          for (let key of keysToInvalidate) {
-            this.cache.delete(key);
+      if (payload.invalidateCache) {
+        let cacheKeys = this.cache.keys();
+        console.log({ cacheKeys });
+
+        // Create a list of keys to invalidate by checking if any cache key starts with one of the invalidateCache entries
+        let keysToInvalidate = [];
+
+        for (let key of cacheKeys) {
+          for (let prefix of payload.invalidateCache) {
+            if (key.startsWith(prefix)) {
+              keysToInvalidate.push(key);
+              break; // No need to check other prefixes once matched
+            }
           }
+        }
+
+        console.log({ keysToInvalidate });
+
+        for (let key of keysToInvalidate) {
+          this.cache.delete(key);
+          console.log(`cache invalidated for key: ${key}`);
+        }
       }
 
+
+      // When a post is created, update each feed to include the new post
       if (payload.collection === "posts") {
+        // 1. Generate hashtags and update hashtags collection
         let hashTags = generateHashtext(payload.data.content);
         for (let tag of hashTags) {
           let hashTag = {
@@ -210,6 +229,19 @@ export default class CrudManager {
           console.log("Creating hashtag", hashTag);
           var h = await this.pb.collection("hashtags").create(hashTag);
           await this.pb.collection("posts").update(res.id, { hashtags: [...res.hashtags, h.id] });
+        }
+
+        // 2. Update each feed in cache to include the new post
+        const keys = this.cache.keys();
+        for (const key of keys) {
+          if (key.includes("feed")) {
+            let cacheData = this.cache.get(key);
+            if (cacheData && Array.isArray(cacheData._payload)) {
+              // Add the new post to the feed's posts array
+              cacheData._payload = [res, ...cacheData._payload];
+              this.cache.set(key, cacheData, Date.now() + 3600 * 1000); // 1 hour
+            }
+          }
         }
       }
 
