@@ -172,7 +172,7 @@ export default class CrudManager {
     this.pb = pb;
   }
 
-    public async create(payload: {
+  public async create(payload: {
     collection: string;
     data: any;
     expand: any[];
@@ -291,11 +291,11 @@ export default class CrudManager {
       payload.cacheKey ||
       `${payload.collection}_list_${JSON.stringify(stableOptions)}`;
 
-      console.log("Cache key for list:", cacheKey);
-      let cacheData = this.cache.get(cacheKey)
-      if (cacheData) {
-        return { opCode: HttpCodes.OK, ...cacheData };
-      }
+    console.log("Cache key for list:", cacheKey);
+    let cacheData = this.cache.get(cacheKey)
+    if (cacheData) {
+      return { opCode: HttpCodes.OK, ...cacheData };
+    }
     let hasIssue = await Validate(payload, "list");
     if (hasIssue) return hasIssue;
 
@@ -320,11 +320,16 @@ export default class CrudManager {
         payload.collection === "posts" &&
         data.length > 0 &&
         payload.options?.sort?.includes("-pinned")
-      ) { 
+      ) {
         data = [
           ...data.filter((post: any) => post.pinned),
           ...data.filter((post: any) => !post.pinned),
         ];
+      } else if (payload.collection === "posts" && data.length > 0) {
+        data = [
+          ...data.filter((post: any) => !post.expand.author.deactivated)
+        ]
+
       }
 
       // Now paginate the sorted data
@@ -333,7 +338,7 @@ export default class CrudManager {
         payload.page * payload.limit
       );
       // ...existing code...
- 
+
       const response = {
         _payload: paginatedItems,
         totalItems: paginatedItems.length,
@@ -341,9 +346,9 @@ export default class CrudManager {
           data.length / payload.limit),
         opCode: HttpCodes.OK,
       };
- 
 
-      
+
+
 
       this.cache.set(
         cacheKey,
@@ -373,19 +378,19 @@ export default class CrudManager {
     id: string;
     options: { [key: string]: any };
   }, token: string) {
-    if(!payload.isEmbed){
-       let hasIssue = await Validate(payload, "get", token, this.cache);
-       if (hasIssue) return hasIssue;
+    if (!payload.isEmbed) {
+      let hasIssue = await Validate(payload, "get", token, this.cache);
+      if (hasIssue) return hasIssue;
     }
 
     try {
       var cacheKey;
-      if(payload.isEmbed){
+      if (payload.isEmbed) {
         cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}}`
-      }else{
+      } else {
         console.log(payload.isEmbed)
         cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}_${decode(token).payload.id}`
-      } 
+      }
       const cacheData = this.cache.get(cacheKey);
 
       if (cacheData) {
@@ -456,16 +461,36 @@ export default class CrudManager {
     fields: any;
     expand: any[];
     callback: any;
+    invalidateCache: string[]
   }, token: string) {
     let hasIssue = await Validate(payload, "update", token, this.cache);
     if (hasIssue) return hasIssue;
-    try { 
+    try {
       const res = await this.pb.collection(payload.collection).update(payload.id, payload.fields, {
         ...(payload.expand && {
           expand: joinExpand(payload.expand, payload.collection, "update"),
         }),
       });
 
+      if (payload.invalidateCache) {
+        let cacheKeys = this.cache.keys();
+
+        // Create a list of keys to invalidate by checking if any cache key starts with one of the invalidateCache entries
+        let keysToInvalidate = [];
+
+        for (let key of cacheKeys) {
+          for (let prefix of payload.invalidateCache) {
+            if (key.startsWith(prefix)) {
+              keysToInvalidate.push(key);
+              break; // No need to check other prefixes once matched
+            }
+          }
+        }
+
+        for (let key of keysToInvalidate) {
+          this.cache.delete(key);
+        }
+      }
       this.cache.updateAllOccurrences(payload.collection, { id: payload.id, fields: payload.fields });
       return { _payload: res, opCode: HttpCodes.OK };
     } catch (error) {
