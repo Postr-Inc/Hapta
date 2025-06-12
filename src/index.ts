@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { HttpCodes } from "../Enums/HttpCodes";
 import { createBunWebSocket, getConnInfo } from "hono/bun";
 import Pocketbase from "pocketbase";
-import config from "../config.toml";
+import config from "../config"
 import { webSocketLimiter } from "hono-rate-limiter";
 import { rateLimiter } from "hono-rate-limiter";
 import { bearerAuth } from "hono/bearer-auth";
@@ -11,6 +11,8 @@ import { HTTPException } from "hono/http-exception";
 import { cors } from "hono/cors";
 import { decode, sign, verify } from "hono/jwt";
 import RateLimitHandler from "../Core/RateLimiter";
+import MainDashboard from "../Core/AdminPanel/frontend_panel";
+import process from 'process'
 import {
   getCookie,
   getSignedCookie,
@@ -35,10 +37,11 @@ import RequestHandler from "../Core/RequestHandler";
 import CacheController from "../Core/CacheManager";
 import { MessageTypes } from "../Enums/MessageTypes";
 import EmbedEngine from "../Core/EmbedEngine";
+import AdminLogin from "../Core/AdminPanel/frontend_panel/auth/login";
+import { stream } from "hono/streaming";
 const { upgradeWebSocket, websocket } = createBunWebSocket();
 globalThis.listeners = new Map();
 const rateLimites = new Map();
- 
 
 switch (true) {
   case !config.hasOwnProperty("database") ||
@@ -58,8 +61,8 @@ switch (true) {
     });
     process.exit(1);
     break;
-  case !config.hasOwnProperty("security") ||
-    !config.security.hasOwnProperty("Secret"):
+  case !config.hasOwnProperty("Security") ||
+    !config.Security.hasOwnProperty("Secret"):
     console.error({
       message: "Please set the Secret in your config file",
       status: ErrorCodes.CONFIGURATION_ERROR,
@@ -109,14 +112,14 @@ const parseCookies = (cookie: string) => {
 const limiter =
   config.hasOwnProperty("ratelimits") && config.ratelimits.isEnabled
     ? rateLimiter({
-        windowMs: config.rateLimit.Duration || 15 * 60 * 1000, // 15 minutes
-        limit: config.rateLimit.Limit || 100,
-        standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
-        keyGenerator: (c) => String(getCookie(c, "Authorization")),
-        message:
-          config.rateLimit.Message ||
-          "You have exceeded the 100 requests in 15 minutes limit!",
-      })
+      windowMs: config.rateLimit.Duration || 15 * 60 * 1000, // 15 minutes
+      limit: config.rateLimit.Limit || 100,
+      standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
+      keyGenerator: (c) => String(getCookie(c, "Authorization")),
+      message:
+        config.rateLimit.Message ||
+        "You have exceeded the 100 requests in 15 minutes limit!",
+    })
     : null;
 if (limiter) {
   app.use(limiter);
@@ -140,6 +143,7 @@ app.use(
       "Connection",
       "Sec-WebSocket-Key",
       "Sec-WebSocket-Extensions",
+      "Access-Control-Allow-Origin",
       "Sec-WebSocket-Version",
     ],
     allowMethods: ["POST", "GET", "OPTIONS", "PUT", "DELETE", "PATCH", "HEAD"],
@@ -164,22 +168,22 @@ app.get("*", (c, next) => {
 
   // get token from cookie
   let token = getCookie(c, "Authorization") || c.req.header("Authorization");
- 
+
   // check if ip is rate limited
- 
+
 
   let ip = c.req.header("CF-Connecting-IP");
 
   // check if request is from a web socket
-  if(c.req.header("Upgrade") === "websocket"){
+  if (c.req.header("Upgrade") === "websocket") {
     // skip next if the request is a web socket
-     return next();
+    return next();
   }
 
-  if(!rt.has(ip)){
+  if (!rt.has(ip)) {
     rt.setRateLimit(ip);
   }
-  if (config.ratelimits.isEnabled) { 
+  if (config.ratelimits.isEnabled) {
     if (!rt.checkRateLimit(ip)) {
       c.status(ErrorCodes.RATE_LIMIT);
       return c.json({
@@ -199,6 +203,7 @@ app.get("*", (c, next) => {
     c.req.url.includes("/embed") == false &&
     c.req.url !== "/auth/login" &&
     c.req.url.includes("/api/files") == false &&
+    c.req.url.includes("/admin") == false &&
     host?.startsWith("embed") == false &&
     c.req.url.includes("/realtime") == false
   ) {
@@ -225,7 +230,7 @@ app.get("*", (c, next) => {
         message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
       });
     }
-  } 
+  }
   return next();
 });
 
@@ -237,53 +242,53 @@ app.get(
         try {
           let { payload, security, callback } = JSON.parse(event.data);
           // check if token is signed and valid
-          
+
           if (
-            !security || !security.hasOwnProperty("token") || 
+            !security || !security.hasOwnProperty("token") ||
             !_AuthHandler.tokenStore.has(security.token) ||
             !verify(
               security.token,
               _AuthHandler.tokenStore.get(security.token) as string,
               "HS256"
-            )  
-          ) { 
-            
+            )
+          ) {
+
             return;
           }
- 
-          
-         switch (payload.type) {
-          case MessageTypes.AUTH_ROLL_TOKEN:
-            // check if the user is authorized to roll a new token
-            let tokenData = decode(security.token) as any;
-            let userID = tokenData.payload.id;
-            console.log("Rolling new token for user:", userID);
-            let newToken =  await _AuthHandler.rollNewToken(security.token, tokenData)
-            console.log("Rolling new token for user:", userID, "New Token:", newToken);
-            if (!newToken) {
+
+
+          switch (payload.type) {
+            case MessageTypes.AUTH_ROLL_TOKEN:
+              // check if the user is authorized to roll a new token
+              let tokenData = decode(security.token) as any;
+              let userID = tokenData.payload.id;
+              console.log("Rolling new token for user:", userID);
+              let newToken = await _AuthHandler.rollNewToken(security.token, tokenData)
+              console.log("Rolling new token for user:", userID, "New Token:", newToken);
+              if (!newToken) {
+                ws.send(
+                  JSON.stringify({
+                    status: ErrorCodes.ROLL_NEW_TOKEN_FAILED,
+                    message: ErrorMessages[ErrorCodes.ROLL_NEW_TOKEN_FAILED],
+                    callback: callback,
+                  })
+                );
+                ws.close();
+                return;
+              }
               ws.send(
                 JSON.stringify({
-                  status: ErrorCodes.ROLL_NEW_TOKEN_FAILED,
-                  message: ErrorMessages[ErrorCodes.ROLL_NEW_TOKEN_FAILED],
-                  callback: callback,
+                  status: HttpCodes.OK,
+                  message: "New token rolled successfully",
+                  data: {
+                    token: newToken,
+                    callback: callback,
+                    type: payload.type,
+                  }
                 })
-              );
-              ws.close();
+              )
               return;
-            }
-            ws.send(
-              JSON.stringify({
-                status: HttpCodes.OK,
-                message: "New token rolled successfully",
-                data: {
-                  token: newToken,
-                  callback: callback,
-                  type: payload.type,
-                }
-              })
-            )
-            return;
-         }
+          }
           ws.send(JSON.stringify({ status: HttpCodes.OK, message: "Connected" }));
           globalThis.listeners.set(ws, { ws, token: security.token });
         } catch (error) {
@@ -311,12 +316,14 @@ app.options("*", (c) => {
   return c.text("", 204);
 });
 
-app.get("/embed/:collection/:id/:type", async (c)=>{
-  const { collection, id, type} = c.req.param()
-  try { 
-    var Embedder = new EmbedEngine(type, await rqHandler.crudManager.get({collection, id, isEmbed: true, options:{
-      expand: ["author"]
-    }}, ))
+app.get("/embed/:collection/:id/:type", async (c) => {
+  const { collection, id, type } = c.req.param()
+  try {
+    var Embedder = new EmbedEngine(type, await rqHandler.crudManager.get({
+      collection, id, isEmbed: true, options: {
+        expand: ["author"]
+      }
+    },))
     return c.html(await Embedder.render())
   } catch (error) {
     console.log(error)
@@ -325,14 +332,14 @@ app.get("/embed/:collection/:id/:type", async (c)=>{
       message: ErrorMessages[ErrorCodes.DATABASE_ERROR],
       status: ErrorCodes.DATABASE_ERROR
     })
-  } 
+  }
 })
 
 app.get("/health", (c) => {
   return c.json({ status: HttpCodes.OK, message: "Server is running" });
 });
 
-app.get("/api/files/:collection/:id/:file",   (c) => {
+app.get("/api/files/:collection/:id/:file", async (c) => {
   let { collection, id, file } = c.req.param();
   if (!collection || !id || !file)
     return c.json(
@@ -340,14 +347,70 @@ app.get("/api/files/:collection/:id/:file",   (c) => {
       { status: ErrorCodes.NOT_FOUND }
     );
   const u = `${pb.baseUrl}/api/files/${collection}/${id}/${file}`;
-  if (imageCache.has(u)) {
+  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(file);
+  const isVideo = /\.(mp4|webm|ogg|mov|avi|mkv)$/i.test(file);
+
+  if (isImage && imageCache.has(u)) {
     return imageCache.get(u);
   }
+
   c.header("Cache-Control", "public, max-age=31536000");
   c.header("Expires", new Date(Date.now() + 31536000000).toUTCString());
-  return fetch(u, {
-    cache: "force-cache",
-  })
+
+  if (isVideo) {
+    // Handle video streaming with range requests
+    const range = c.req.header("range");
+    const videoRes = await fetch(u, {
+      headers: range ? { Range: range } : {},
+    });
+
+    // Set headers for partial content if range requested
+    c.status(videoRes.status);
+    for (const [key, value] of videoRes.headers.entries()) {
+      c.header(key, value);
+    }
+
+    // If the response is not partial content, set appropriate headers
+    if (videoRes.status === 200 && range) {
+      c.status(206);
+      c.header("Accept-Ranges", "bytes");
+      const contentLength = videoRes.headers.get("Content-Length");
+      if (contentLength) c.header("Content-Length", contentLength);
+      const contentType = videoRes.headers.get("Content-Type");
+      if (contentType) c.header("Content-Type", contentType);
+    }
+
+    // Return the video stream directly
+    return stream(c, async (stream) => {
+      if (!videoRes.body) return;
+      const reader = videoRes.body.getReader();
+      while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) await stream.write(value);
+      }
+    });
+  }
+
+  // Default: proxy and cache images/other files
+  const res = await fetch(u, { cache: "force-cache" });
+  if (isImage && res.ok) {
+    const blob = await res.blob();
+    imageCache.set(u, new Response(blob, {
+      headers: {
+        "Content-Type": res.headers.get("Content-Type") || "",
+        "Cache-Control": "public, max-age=31536000",
+        "Expires": new Date(Date.now() + 31536000000).toUTCString(),
+      },
+    }));
+    return imageCache.get(u);
+  }
+  // For non-image, non-video files, just proxy the response
+  c.status(res.status);
+  for (const [key, value] of res.headers.entries()) {
+    c.header(key, value);
+  }
+  return res.body;
 });
 
 app.post("/auth/resetPassword", async (c) => {
@@ -429,13 +492,15 @@ app.post("/collection/:collection", async (c) => {
   let { type, payload, security, callback } = (await c.req.json()) as any;
 
   const token = c.req.header("Authorization") || security?.token;
-  console.log(token);
+  c.req.header("Content-Type", "application/json");
+  c.req.header("Accept", "application/json");
+  c.req.header("Acess-Control-Allow-Origin", "*");
   if (
     !token ||
     !_AuthHandler.tokenStore.has(token) ||
-    !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256") 
+    !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
   ) {
-    c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN); 
+    c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
     return c.json({
       status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
       message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
@@ -470,7 +535,7 @@ app.post("/auth/register", async (c) => {
 });
 
 app.get("/auth/verify", async (c) => {
-  let token = c.req.header("Authorization"); 
+  let token = c.req.header("Authorization");
   console.log("Token:", token, "Token Store:", _AuthHandler.tokenStore.has(token));
   if (
     !token ||
@@ -479,7 +544,7 @@ app.get("/auth/verify", async (c) => {
       token,
       _AuthHandler.tokenStore.get(token) as string,
       "HS256"
-    )) 
+    ))
   ) {
     c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
     return c.json({
@@ -492,7 +557,6 @@ app.get("/auth/verify", async (c) => {
     message: "Token is valid",
   });
 });
-
 app.post("/auth/refreshtoken", async (c) => {
   let { token } = (await c.req.json()) as any;
   if (
@@ -535,8 +599,11 @@ app.post("/auth/refreshtoken", async (c) => {
   }
 });
 
+
+
 Bun.serve({
-  port: config.server.Port || 3000,
+  port: config.Server.Port || 3000,
+  idleTimeout: 255,
   websocket,
   fetch: app.fetch,
 });
@@ -548,8 +615,8 @@ console.log(`
 / __  / /_/ / /_/ / /_/ /_/ / 
 /_/ /_/\__,_/ .___/\__/\__,_/  
             Version: ${globalThis.version || "1.0.0"}
-            Port: ${config.server.Port || 3000}
-            SSL: ${config.server.SSL || false}
+            Port: ${config.Server.Port || 3000}
+            SSL: ${config.Server.SSL || false}
 `);
 
 process.on("beforeExit", async () => {
