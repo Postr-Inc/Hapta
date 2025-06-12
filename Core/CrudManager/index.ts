@@ -7,7 +7,8 @@ import Validate from "./Helpers/Validate";
 import { generateHashtext } from "../Ai";
 import { c } from "../../src";
 import { Tasks } from "../Concurrency/Enums/Tasks";
-
+import RecommendationAlgorithmHandler from "../RecommendationAlgorithmHandler";
+import { Post } from "../../Enums/RecordTypes/post";
 const subscriptions = new Map<string, any>();
 const updateQueue = new Map<string, any[]>();
 const deleteQueue = new Map<string, any[]>();
@@ -291,7 +292,6 @@ export default class CrudManager {
       payload.cacheKey ||
       `${payload.collection}_list_${JSON.stringify(stableOptions)}`;
 
-    console.log("Cache key for list:", cacheKey);
     let cacheData = this.cache.get(cacheKey)
     if (cacheData) {
       return { opCode: HttpCodes.OK, ...cacheData };
@@ -299,16 +299,25 @@ export default class CrudManager {
     let hasIssue = await Validate(payload, "list");
     if (hasIssue) return hasIssue;
 
+
     try {
       console.log("Listing records for collection:", payload.collection);
+      // Build the sort string correctly
+      let sortString = "";
+      if (payload.options?.sort) {
+        sortString = payload.options.sort;
+      } else {
+        sortString = (payload.options?.order === "asc" ? "created" : "-created");
+      }
+
       var data = await this.pb.collection(payload.collection).getFullList(
         {
-          sort: payload.options?.order === "asc" ? "created" : "-created" + (payload.options?.sort ? `,${payload.options.sort}` : ""),
+          sort: sortString,
           filter: payload.options?.filter,
           expand: joinExpand(payload.options?.expand || [], payload.collection, "list"),
           cache: "force-cache",
         }
-      );
+      ) as Post[]
       // ...existing code...
       data = await c.run(Tasks.FILTER_THROUGH_LIST, {
         list: data,
@@ -316,6 +325,19 @@ export default class CrudManager {
       })
 
       // Sort pinned first if needed
+      if (
+        payload.options?.sort?.includes("-created")) {
+        data = data.sort((a: any, b: any) => {
+          const dateA = new Date(a.created).getTime();
+          const dateB = new Date(b.created).getTime();
+          if (payload.options?.order === "asc") {
+            return dateA - dateB;
+          } else {
+            return dateB - dateA;
+          }
+        });
+      }
+
       if (
         payload.collection === "posts" &&
         data.length > 0 &&
@@ -325,12 +347,11 @@ export default class CrudManager {
           ...data.filter((post: any) => post.pinned),
           ...data.filter((post: any) => !post.pinned),
         ];
-      } else if (payload.collection === "posts" && data.length > 0) {
-        data = [
-          ...data.filter((post: any) => !post.expand.author.deactivated)
-        ]
+        // Sort based on order
 
       }
+
+
 
       // Now paginate the sorted data
       var paginatedItems = data.slice(
@@ -338,6 +359,7 @@ export default class CrudManager {
         payload.page * payload.limit
       );
       // ...existing code...
+
 
       const response = {
         _payload: paginatedItems,
