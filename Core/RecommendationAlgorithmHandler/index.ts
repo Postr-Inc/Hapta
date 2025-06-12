@@ -12,8 +12,7 @@ export default class RecommendationAlgorithmHandler {
   constructor(data: { _payload: Post[] , totalPages: number, totalItems: number }) { 
     this.data = data._payload as Post[];
     this.totalPages = data.totalPages;
-    this.totalItems = data.totalItems
-    console.log(this.totalItems, this.totalPages)
+    this.totalItems = data.totalItems 
     cache.set(`recommendationData`, this.data);
   }
 
@@ -21,12 +20,16 @@ export default class RecommendationAlgorithmHandler {
     let recommended = this.data.filter((item: Post) => {  
         const input = textToVector(item.content, vocabulary);
         const output = neuralNetwork.forward(input);
-        const summary = summaryVocabulary[output.indexOf(Math.max(...output))];
-        console.log({summary})
+        const summary = summaryVocabulary[output.indexOf(Math.max(...output))]; 
         item.rank = this.rank(item);
         if(item.expand.author.hasOwnProperty("expand") && item.expand.author.expand.hasOwnProperty("TypesOfContentPosted") && !item.expand.author.expand.TypesOfContentPosted.includes(summary)){
             item.rank -= Ranks.offTopicPenalty;
         }  
+        // Penalize old posts
+        const postAgeDays = (Date.now() - new Date(item.created).getTime()) / (1000 * 60 * 60 * 24);
+        if (postAgeDays > 30) {
+          item.rank -= Ranks.oldPostPenalty ?? 100; // Use a default penalty if not defined
+        }
         if(item.links && item.links.length > 0){
             let spam = item.links.filter((link: string) => data.includes(link));
             if(spam.length > 0){
