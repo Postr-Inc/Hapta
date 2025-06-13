@@ -9,114 +9,6 @@ import { c } from "../../src";
 import { Tasks } from "../Concurrency/Enums/Tasks";
 import RecommendationAlgorithmHandler from "../RecommendationAlgorithmHandler";
 import { Post } from "../../Enums/RecordTypes/post";
-const subscriptions = new Map<string, any>();
-const updateQueue = new Map<string, any[]>();
-const deleteQueue = new Map<string, any[]>();
-const createQueue = new Map<string, any[]>();
-const lastUpdated = new Map<string, number>();
-
-type QueueMethod = "create" | "delete" | "update";
-
-function appendToQueue(data: any, cancelPrevious = true, method: QueueMethod) {
-  const queueMap =
-    method === "create"
-      ? createQueue
-      : method === "delete"
-        ? deleteQueue
-        : updateQueue;
-
-  if (cancelPrevious) {
-    queueMap.set(data.id, [data.fields]);
-  } else {
-    const queue = queueMap.get(data.id) || [];
-    queue.push(data.fields || data);
-    queueMap.set(data.id, queue);
-  }
-
-  lastUpdated.set(data.id, Date.now());
-}
-
-function removeFromQueue(data: any) {
-  const queue = updateQueue.get(data.id);
-  if (queue) {
-    const index = queue.findIndex((d: any) => d.key === data.key);
-    if (index > -1) {
-      queue.splice(index, 1);
-    }
-  }
-}
-
-async function rollQueue(id: string, pb: Pocketbase): Promise<void> {
-  const now = Date.now();
-  const lastTime = lastUpdated.get(id) || 0;
-
-  if (now - lastTime < 1000) {
-    console.log(`Skipping rollQueue for ${id} due to recent update`);
-    return;
-  }
-
-  try {
-    await processQueue(createQueue, id, pb, "create");
-    await processQueue(updateQueue, id, pb, "update");
-    await processQueue(deleteQueue, id, pb, "delete");
-    lastUpdated.delete(id);
-  } catch (error) {
-    console.error(`Failed to process queue for ${id}`, error);
-  }
-}
-
-async function processQueue(
-  queueMap: Map<string, any[]>,
-  id: string,
-  pb: Pocketbase,
-  method: QueueMethod
-) {
-  if (!queueMap.has(id)) return;
-
-  const queue = queueMap.get(id);
-  if (!queue) return;
-
-  for (const data of queue) {
-    if (!data) continue;
-    try {
-      switch (method) {
-        case "create":
-          await pb.admins.client
-            .collection(data.collection)
-            .create(data.record, {
-              ...(data.expand && {
-                expand: joinExpand(data.expand, data.collection, "create"),
-              }),
-            });
-          break;
-        case "update":
-          await pb.admins.client
-            .collection(data.collection)
-            .update(data.id, data.data);
-          break;
-        case "delete":
-          await pb.admins.client.collection(data.collection).delete(data.id);
-          break;
-      }
-    } catch (error) {
-      console.error(`Failed to ${method} record for ${id}`, error);
-    }
-  }
-
-  queueMap.delete(id);
-}
-
-setInterval(() => {
-  let allKeys = [
-    ...createQueue.keys(),
-    ...updateQueue.keys(),
-    ...deleteQueue.keys(),
-  ];
-  for (const key of allKeys) {
-    console.log(`Rolling queue for ${key}`);
-    rollQueue(key, pb);
-  }
-}, 30000); // 30 seconds
 
 function joinExpand(expand: Array<string>, collection: string, method: string) {
   return expand
@@ -324,6 +216,8 @@ export default class CrudManager {
         collection: payload.collection,
       })
 
+      console.log(payload.options?.sort, payload.options?.filter)
+
       // Sort pinned first if needed
       if (
         payload.options?.sort?.includes("-created")) {
@@ -346,8 +240,7 @@ export default class CrudManager {
         data = [
           ...data.filter((post: any) => post.pinned),
           ...data.filter((post: any) => !post.pinned),
-        ];
-        // Sort based on order
+        ]; 
 
       }
 
@@ -488,6 +381,12 @@ export default class CrudManager {
     let hasIssue = await Validate(payload, "update", token, this.cache);
     if (hasIssue) return hasIssue;
     try {
+
+      for(var i in payload.fields){
+        if(payload.fields[i].isFile){
+          payload.fields[i] = handleFiles(payload.fields[i])[0]
+        }
+      } 
       const res = await this.pb.collection(payload.collection).update(payload.id, payload.fields, {
         ...(payload.expand && {
           expand: joinExpand(payload.expand, payload.collection, "update"),
@@ -511,6 +410,7 @@ export default class CrudManager {
 
         for (let key of keysToInvalidate) {
           this.cache.delete(key);
+          console.log(`Invalidating : ${key}`)
         }
       }
       this.cache.updateAllOccurrences(payload.collection, { id: payload.id, fields: payload.fields });
