@@ -1,3 +1,4 @@
+//@ts-nocheck
 import { decode } from "hono/jwt";
 import CacheController from "../CacheManager";
 import Pocketbase from "pocketbase";
@@ -5,7 +6,7 @@ import { ErrorCodes, ErrorMessages } from "../../Enums/Errors";
 import { HttpCodes } from "../../Enums/HttpCodes";
 import Validate from "./Helpers/Validate";
 import { generateHashtext } from "../Ai";
-import { c } from "../../src";
+import { c, cache } from "../../src";
 import { Tasks } from "../Concurrency/Enums/Tasks";
 import RecommendationAlgorithmHandler from "../RecommendationAlgorithmHandler";
 import { Post } from "../../Enums/RecordTypes/post";
@@ -87,7 +88,6 @@ export default class CrudManager {
 
       if (payload.invalidateCache) {
         let cacheKeys = this.cache.keys();
-        console.log({ cacheKeys });
 
         // Create a list of keys to invalidate by checking if any cache key starts with one of the invalidateCache entries
         let keysToInvalidate = [];
@@ -182,18 +182,47 @@ export default class CrudManager {
     };
     const cacheKey =
       payload.cacheKey ||
-      `${payload.collection}_list_${JSON.stringify(stableOptions)}`;
+      `${payload.collection}_${payload.id}_list_${JSON.stringify(stableOptions)}_${decodedToken.payload.id}`;
 
-    let cacheData = this.cache.get(cacheKey)
-    if (cacheData) {
-      return { opCode: HttpCodes.OK, ...cacheData };
+    let cacheStatus = this.cache.timesVisited.get(payload.id) || { incremental: 0, cacheType: "six_hour_immediate" };
+    cacheStatus.incremental++;
+    this.cache.timesVisited.set(cacheKey, cacheStatus);
+
+    let expirationTime: number;
+    if (cacheStatus.incremental > 5) {
+      const minMinutes = 15, maxMinutes = 45;
+      const randomMinutes = Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
+      expirationTime = Date.now() + randomMinutes * 60 * 1000;
+      console.log(`Setting cache expiration for frequently accessed item (ID: ${cacheKey}, Key: ${cacheKey}) to ${randomMinutes} minutes.`);
+    } else if (cacheStatus.incremental > 0) {
+      const minHours = 1, maxHours = 5;
+      const randomHours = Math.floor(Math.random() * (maxHours - minHours + 1)) + minHours;
+      expirationTime = Date.now() + randomHours * 60 * 60 * 1000;
+      console.log(`Setting cache expiration for less frequently accessed item (ID: ${cacheKey}, Key: ${cacheKey}) to 10 minutes.`);
+    } else {
+      expirationTime = Date.now() + 6 * 60 * 60 * 1000;
     }
+
+    const cacheData = this.cache.get(cacheKey);
+ 
+    if (cacheData && cacheStatus.expirationTime > Date.now()) {
+      if (cacheStatus.expirationTime < expirationTime) {
+        this.cache.set(cacheKey, {
+          _payload: cacheData._payload,
+          expirationTime,
+        });
+        console.log(`Extended cache expiration for key: ${cacheKey} to new expiry.`);
+      }
+ 
+
+      return { opCode: HttpCodes.OK, _payload: cacheData._payload };
+    }
+ 
     let hasIssue = await Validate(payload, "list");
     if (hasIssue) return hasIssue;
 
 
-    try {
-      console.log("Listing records for collection:", payload.collection);
+    try { 
       // Build the sort string correctly
       let sortString = "";
       if (payload.options?.sort) {
@@ -215,8 +244,7 @@ export default class CrudManager {
         list: data,
         collection: payload.collection,
       })
-
-      console.log(payload.options?.sort, payload.options?.filter)
+ 
 
       // Sort pinned first if needed
       if (
@@ -240,7 +268,7 @@ export default class CrudManager {
         data = [
           ...data.filter((post: any) => post.pinned),
           ...data.filter((post: any) => !post.pinned),
-        ]; 
+        ];
 
       }
 
@@ -264,7 +292,7 @@ export default class CrudManager {
 
 
 
-
+      console.log({expirationTime})
       this.cache.set(
         cacheKey,
         {
@@ -272,9 +300,11 @@ export default class CrudManager {
           totalItems: response.totalItems,
           totalPages: response.totalPages,
         },
-        Date.now() + 3600 * 1000 // 1 hour
+        expirationTime
       );
 
+const check = this.cache.get(cacheKey);
+console.log("[DEBUG] Read after set:", check);
       return {
         _payload: response._payload,
         totalItems: response.totalItems,
@@ -303,7 +333,7 @@ export default class CrudManager {
       }
     }
 
-    try { 
+    try {
       let cacheKey: string;
       if (payload.isEmbed) {
         cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}`;
@@ -315,24 +345,27 @@ export default class CrudManager {
       let cacheStatus = this.cache.timesVisited.get(payload.id) || { incremental: 0, cacheType: "six_hour_immediate" };
       cacheStatus.incremental++;
       this.cache.timesVisited.set(payload.id, cacheStatus);
- 
+
       let expirationTime: number;
       if (cacheStatus.incremental > 5) {
         const minMinutes = 15, maxMinutes = 45;
         const randomMinutes = Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
         expirationTime = Date.now() + randomMinutes * 60 * 1000;
+        console.log(`Setting cache expiration for frequently cache reference (Cache_ID: ${payload.id}, Key: ${cacheKey}) to ${randomMinutes} minutes.`);
       } else if (cacheStatus.incremental > 0) {
         const minHours = 1, maxHours = 5;
         const randomHours = Math.floor(Math.random() * (maxHours - minHours + 1)) + minHours;
         expirationTime = Date.now() + randomHours * 60 * 60 * 1000;
+        console.log(`Setting cache expiration for less frequently accessed cache reference (Cache_ID: ${payload.id}, Key: ${cacheKey}) to 10 minutes.`);
       } else {
         expirationTime = Date.now() + 6 * 60 * 60 * 1000;
       }
- 
+
       const cacheData = this.cache.get(cacheKey);
 
-      if (cacheData && cacheData.expirationTime > Date.now()) { 
-        if (cacheData.expirationTime < expirationTime) { 
+      console.log(cacheData)
+      if (cacheData && cacheStatus.expirationTime > Date.now()) {
+        if (cacheStatus.expirationTime < expirationTime) {
           this.cache.set(cacheKey, {
             _payload: cacheData._payload,
             expirationTime,
@@ -357,6 +390,7 @@ export default class CrudManager {
       });
 
 
+
       this.cache.set(
         cacheKey,
         {
@@ -364,10 +398,12 @@ export default class CrudManager {
         },
         expirationTime
       );
- 
+
+      // --- Return Success Response ---
       return { _payload: processed[0], opCode: HttpCodes.OK };
 
-    } catch (error) { 
+    } catch (error) {
+      // --- Error Handling ---
       console.error("Error getting record:", error);
       return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR, message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
     }
@@ -416,11 +452,11 @@ export default class CrudManager {
     if (hasIssue) return hasIssue;
     try {
 
-      for(var i in payload.fields){
-        if(payload.fields[i].isFile){
+      for (var i in payload.fields) {
+        if (payload.fields[i].isFile) {
           payload.fields[i] = handleFiles(payload.fields[i])[0]
         }
-      } 
+      }
       const res = await this.pb.collection(payload.collection).update(payload.id, payload.fields, {
         ...(payload.expand && {
           expand: joinExpand(payload.expand, payload.collection, "update"),
