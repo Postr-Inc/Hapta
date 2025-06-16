@@ -293,30 +293,62 @@ export default class CrudManager {
     id: string;
     options: { [key: string]: any };
   }, token: string) {
+    // --- Validation ---
+    // Perform validation if the request is not an embed
     if (!payload.isEmbed) {
-      let hasIssue = await Validate(payload, "get", token, this.cache);
-      if (hasIssue) return hasIssue;
+      const hasIssue = await Validate(payload, "get", token, this.cache);
+      if (hasIssue) {
+        console.warn("Validation failed for get request:", hasIssue);
+        return hasIssue;
+      }
     }
 
-    try {
-      var cacheKey;
+    try { 
+      let cacheKey: string;
       if (payload.isEmbed) {
-        cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}}`
+        cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}`;
       } else {
-        console.log(payload.isEmbed)
-        cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}_${decode(token).payload.id}`
+        const decodedToken = decode(token) as { payload: { id: string } };
+        cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}_${decodedToken.payload.id}`;
       }
+
+      let cacheStatus = this.cache.timesVisited.get(payload.id) || { incremental: 0, cacheType: "six_hour_immediate" };
+      cacheStatus.incremental++;
+      this.cache.timesVisited.set(payload.id, cacheStatus);
+ 
+      let expirationTime: number;
+      if (cacheStatus.incremental > 5) {
+        const minMinutes = 15, maxMinutes = 45;
+        const randomMinutes = Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
+        expirationTime = Date.now() + randomMinutes * 60 * 1000;
+      } else if (cacheStatus.incremental > 0) {
+        const minHours = 1, maxHours = 5;
+        const randomHours = Math.floor(Math.random() * (maxHours - minHours + 1)) + minHours;
+        expirationTime = Date.now() + randomHours * 60 * 60 * 1000;
+      } else {
+        expirationTime = Date.now() + 6 * 60 * 60 * 1000;
+      }
+ 
       const cacheData = this.cache.get(cacheKey);
 
-      if (cacheData) {
-        return { opCode: HttpCodes.OK, ...cacheData };
+      if (cacheData && cacheData.expirationTime > Date.now()) { 
+        if (cacheData.expirationTime < expirationTime) { 
+          this.cache.set(cacheKey, {
+            _payload: cacheData._payload,
+            expirationTime,
+          });
+          console.log(`Extended cache expiration for key: ${cacheKey} to new expiry.`);
+        }
+
+        return { opCode: HttpCodes.OK, _payload: cacheData._payload };
       }
+
+      console.log(`Cache miss for key: ${cacheKey}. Fetching data...`);
 
       const data = await this.pb.collection(payload.collection).getOne(payload.id, {
         ...(payload.options && payload.options.expand && {
           expand: joinExpand(payload.options.expand, payload.collection, "get"),
         }),
-        cache: "force-cache",
       });
 
       const processed = await c.run(Tasks.FILTER_THROUGH_LIST, {
@@ -324,17 +356,19 @@ export default class CrudManager {
         collection: payload.collection,
       });
 
+
       this.cache.set(
         cacheKey,
         {
           _payload: processed[0],
         },
-        Date.now() + 3600 * 1000 // 1 hour
+        expirationTime
       );
-
+ 
       return { _payload: processed[0], opCode: HttpCodes.OK };
-    } catch (error) {
-      console.error("Error getting record", error);
+
+    } catch (error) { 
+      console.error("Error getting record:", error);
       return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR, message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
     }
   }
