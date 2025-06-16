@@ -100,6 +100,12 @@ export enum Ranks {
      * Penalty for grammar mistakes.
      */
     grammarMistakesPenalty = 0.01,
+
+    /**
+     * is 7 days old, grant posts higher ranking percentage for being new so that they can be seen!
+     */
+
+      is7daysOld = 0.5
   }
   
   export default Ranks;
