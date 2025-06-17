@@ -99,9 +99,7 @@ export default class CrudManager {
               break; // No need to check other prefixes once matched
             }
           }
-        }
-
-        console.log({ keysToInvalidate });
+        } 
 
         for (let key of keysToInvalidate) {
           this.cache.delete(key);
@@ -118,8 +116,7 @@ export default class CrudManager {
           let hashTag = {
             content: tag,
             posts: [res.id],
-          };
-          console.log("Creating hashtag", hashTag);
+          }; 
           var h = await this.pb.collection("hashtags").create(hashTag);
           await this.pb.collection("posts").update(res.id, { hashtags: [...res.hashtags, h.id] });
         }
@@ -290,9 +287,7 @@ export default class CrudManager {
         opCode: HttpCodes.OK,
       };
 
-
-
-      console.log({expirationTime})
+ 
       this.cache.set(
         cacheKey,
         {
@@ -301,10 +296,7 @@ export default class CrudManager {
           totalPages: response.totalPages,
         },
         expirationTime
-      );
-
-const check = this.cache.get(cacheKey);
-console.log("[DEBUG] Read after set:", check);
+      ); 
       return {
         _payload: response._payload,
         totalItems: response.totalItems,
@@ -362,8 +354,7 @@ console.log("[DEBUG] Read after set:", check);
       }
 
       const cacheData = this.cache.get(cacheKey);
-
-      console.log(cacheData)
+ 
       if (cacheData && cacheStatus.expirationTime > Date.now()) {
         if (cacheStatus.expirationTime < expirationTime) {
           this.cache.set(cacheKey, {
