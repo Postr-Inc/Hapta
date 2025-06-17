@@ -5,6 +5,7 @@ import { createBunWebSocket, getConnInfo } from "hono/bun";
 import Pocketbase from "pocketbase";
 import config from "../config"
 import { webSocketLimiter } from "hono-rate-limiter";
+import crypto from 'crypto'
 import { rateLimiter } from "hono-rate-limiter";
 import { bearerAuth } from "hono/bearer-auth";
 import { HTTPException } from "hono/http-exception";
@@ -110,14 +111,14 @@ const parseCookies = (cookie: string) => {
     }, {});
 };
 const limiter =
-  config.hasOwnProperty("ratelimits") && config.ratelimits.isEnabled
+  config.hasOwnProperty("ratelimits") && config.ratelimit.isEnabled
     ? rateLimiter({
-      windowMs: config.rateLimit.Duration || 15 * 60 * 1000, // 15 minutes
-      limit: config.rateLimit.Limit || 100,
+      windowMs: config.ratelimit.Duration || 15 * 60 * 1000, // 15 minutes
+      limit: config.ratelimit.Max || 100,
       standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
       keyGenerator: (c) => String(getCookie(c, "Authorization")),
       message:
-        config.rateLimit.Message ||
+        config.ratelimit.Message ||
         "You have exceeded the 100 requests in 15 minutes limit!",
     })
     : null;
@@ -168,6 +169,9 @@ app.get("*", (c, next) => {
 
   // get token from cookie
   let token = getCookie(c, "Authorization") || c.req.header("Authorization");
+  var decoded;
+  
+  if(token) decoded = decode(token);
 
   // check if ip is rate limited
 
@@ -183,8 +187,9 @@ app.get("*", (c, next) => {
   if (!rt.has(ip)) {
     rt.setRateLimit(ip);
   }
-  if (config.ratelimits.isEnabled) {
+  if (config.ratelimit.isEnabled) {
     if (!rt.checkRateLimit(ip)) {
+      console.log("ratelimited")
       c.status(ErrorCodes.RATE_LIMIT);
       return c.json({
         status: ErrorCodes.RATE_LIMIT,
@@ -201,13 +206,14 @@ app.get("*", (c, next) => {
     c.req.url !== "/auth/requestPasswordReset" &&
     c.req.url !== "/auth/resetPassword" &&
     c.req.url.includes("/embed") == false &&
+    c.req.url !== "/auth/get-basic-auth-token" &&
     c.req.url !== "/auth/login" &&
     c.req.url.includes("/api/files") == false &&
     c.req.url.includes("/admin") == false &&
     host?.startsWith("embed") == false &&
     c.req.url.includes("/realtime") == false
   ) {
-    if (tokenIp !== ip) {
+    if (tokenIp !== ip && !decoded.payload.isBasicToken) {
       c.status(ErrorCodes.UNNAUTHORIZED_IP);
       return c.json({
         status: ErrorCodes.UNNAUTHORIZED_IP,
@@ -215,9 +221,10 @@ app.get("*", (c, next) => {
       });
     }
     if (
+      decoded.payload.isBasicToken ||
       token &&
       _AuthHandler.tokenStore.has(token) &&
-      verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
+      verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256") 
     ) {
       console.log("Token is valid");
       c.status(HttpCodes.OK);
@@ -468,6 +475,15 @@ app.post("/auth/login", async (c) => {
 
 const rqHandler = new RequestHandler();
 
+app.post("/auth/get-basic-auth-token", async (c)=>{
+  let token = await sign({
+    isBasicToken: true,
+    permissions: ["read", "write", "delete"]
+  }, config.Security.Secret + crypto.randomUUID() , "HS256") as string;
+
+  return c.json({status: 200, message: "Successfully created basic auth token", token})
+})
+
 app.post("/deepsearch", async (c) => {
   const token = c.req.header("Authorization");
   if (
@@ -495,11 +511,13 @@ app.post("/collection/:collection", async (c) => {
   c.req.header("Content-Type", "application/json");
   c.req.header("Accept", "application/json");
   c.req.header("Acess-Control-Allow-Origin", "*");
+  var decodedToken  = decode(token)
   if (
+    !decodedToken.payload.isBasicToken &&
     !token ||
-    !_AuthHandler.tokenStore.has(token) ||
-    !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
-  ) {
+     !decodedToken.payload.isBasicToken && !_AuthHandler.tokenStore.has(token) ||
+     !decodedToken.payload.isBasicToken && !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
+  ) { 
     c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
     return c.json({
       status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
