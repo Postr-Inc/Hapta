@@ -36,11 +36,7 @@ In your config.ts
 ```ts
  
 export default {
-    database:{
-        AdminEmail: "",
-        AdminPassword:"",
-        DatabaseURL: ""
-    },
+     
     Server:{
         Port: 8080,
         Nodes: ["current"],
@@ -57,6 +53,15 @@ export default {
         Message:"You have reached the maximum number of requests per minute"
     }
 }
+```
+
+In your .env
+```ts
+AdminEmail=""
+AdminPassword=""
+DatabaseUrl= ""
+TestUserEmail=
+TestUserPassword=
 ```
 
 ```bash
