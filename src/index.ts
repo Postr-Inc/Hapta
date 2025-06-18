@@ -44,17 +44,30 @@ const { upgradeWebSocket, websocket } = createBunWebSocket();
 globalThis.listeners = new Map();
 const rateLimites = new Map();
 
+export const pb = new Pocketbase(Bun.env.DatabaseURL);
+
+export const _AuthHandler = new AuthHandler(pb);
+
+
+function isTokenValid(token: string) {
+  if ( 
+    !token ||
+   !_AuthHandler.tokenStore.has(token) ||
+    !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
+  ) {
+     return true
+  }
+  return true
+}
 switch (true) {
-  case !config.hasOwnProperty("database") ||
-    !config.database.hasOwnProperty("DatabaseURL"):
+  case   !Bun.env.DatabaseURL:
     console.error({
       message: "Please set the DatabaseURL in your config file",
       status: ErrorCodes.CONFIGURATION_ERROR,
     });
     process.exit(1);
     break;
-  case !config.database.hasOwnProperty("AdminEmail") ||
-    !config.database.hasOwnProperty("AdminPassword"):
+  case !Bun.env.AdminEmail ||!Bun.env.AdminPassword:
     console.error({
       message:
         "Please set the AdminEmail and AdminPassword in your config file",
@@ -70,11 +83,7 @@ switch (true) {
     });
     process.exit(1);
     break;
-}
-export const pb = new Pocketbase(config.database.DatabaseURL);
-
-export const _AuthHandler = new AuthHandler(pb);
-
+} 
 export {
   neuralNetwork,
   summaryToTarget,
@@ -86,8 +95,8 @@ pb.admins.client.autoCancellation(false);
 
 try {
   await pb.admins.authWithPassword(
-    config.database.AdminEmail,
-    config.database.AdminPassword,
+    Bun.env.AdminEmail,
+    Bun.env.AdminPassword,
     {
       autoRefreshThreshold: 1000,
     }
@@ -170,8 +179,8 @@ app.get("*", (c, next) => {
   // get token from cookie
   let token = getCookie(c, "Authorization") || c.req.header("Authorization");
   var decoded;
-  
-  if(token) decoded = decode(token);
+
+  if (token) decoded = decode(token);
 
   // check if ip is rate limited
 
@@ -188,8 +197,7 @@ app.get("*", (c, next) => {
     rt.setRateLimit(ip);
   }
   if (config.ratelimit.isEnabled) {
-    if (!rt.checkRateLimit(ip)) {
-      console.log("ratelimited")
+    if (!rt.checkRateLimit(ip)) { 
       c.status(ErrorCodes.RATE_LIMIT);
       return c.json({
         status: ErrorCodes.RATE_LIMIT,
@@ -224,13 +232,11 @@ app.get("*", (c, next) => {
       decoded.payload.isBasicToken ||
       token &&
       _AuthHandler.tokenStore.has(token) &&
-      verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256") 
-    ) {
-      console.log("Token is valid");
+      verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
+    ) { 
       c.status(HttpCodes.OK);
       return next();
-    } else {
-      console.log("Invalid or missing token 222");
+    } else { 
       c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
       return c.json({
         status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
@@ -268,10 +274,8 @@ app.get(
             case MessageTypes.AUTH_ROLL_TOKEN:
               // check if the user is authorized to roll a new token
               let tokenData = decode(security.token) as any;
-              let userID = tokenData.payload.id;
-              console.log("Rolling new token for user:", userID);
-              let newToken = await _AuthHandler.rollNewToken(security.token, tokenData)
-              console.log("Rolling new token for user:", userID, "New Token:", newToken);
+              let userID = tokenData.payload.id; 
+              let newToken = await _AuthHandler.rollNewToken(security.token, tokenData) 
               if (!newToken) {
                 ws.send(
                   JSON.stringify({
@@ -392,9 +396,9 @@ app.get("/api/files/:collection/:id/:file", async (c) => {
       if (!videoRes.body) return;
       const reader = videoRes.body.getReader();
       while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) await stream.write(value);
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) await stream.write(value);
       }
     });
   }
@@ -475,13 +479,13 @@ app.post("/auth/login", async (c) => {
 
 const rqHandler = new RequestHandler();
 
-app.post("/auth/get-basic-auth-token", async (c)=>{
+app.post("/auth/get-basic-auth-token", async (c) => {
   let token = await sign({
     isBasicToken: true,
     permissions: ["read", "write", "delete"]
-  }, config.Security.Secret + crypto.randomUUID() , "HS256") as string;
+  }, config.Security.Secret + crypto.randomUUID(), "HS256") as string;
 
-  return c.json({status: 200, message: "Successfully created basic auth token", token})
+  return c.json({ status: 200, message: "Successfully created basic auth token", token })
 })
 
 app.post("/deepsearch", async (c) => {
@@ -511,19 +515,20 @@ app.post("/collection/:collection", async (c) => {
   c.req.header("Content-Type", "application/json");
   c.req.header("Accept", "application/json");
   c.req.header("Acess-Control-Allow-Origin", "*");
-  var decodedToken  = decode(token)
+  var decodedToken = decode(token)
   if (
     !decodedToken.payload.isBasicToken &&
     !token ||
-     !decodedToken.payload.isBasicToken && !_AuthHandler.tokenStore.has(token) ||
-     !decodedToken.payload.isBasicToken && !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
-  ) { 
+    !decodedToken.payload.isBasicToken && !_AuthHandler.tokenStore.has(token) ||
+    !decodedToken.payload.isBasicToken && !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
+  ) {
     c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
     return c.json({
       status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
       message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
     });
   }
+  payload.collection = collection
   let d = await rqHandler.handleMessage({ type, payload, callback }, token);
   c.status(d.opCode);
   return c.json(d);
@@ -554,7 +559,26 @@ app.post("/auth/register", async (c) => {
 
 app.get("/auth/verify", async (c) => {
   let token = c.req.header("Authorization");
-  console.log("Token:", token, "Token Store:", _AuthHandler.tokenStore.has(token));
+
+  switch (isTokenValid(token)) {
+    case true:
+      return c.json({
+        status: HttpCodes.OK,
+        message: "Token is valid",
+      });
+    case false:
+      c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
+      return c.json({
+        status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
+        message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
+      });
+  }
+
+});
+
+app.delete('/auth/delete-account', async (c) => {
+  const token = c.req.header("Authorization")
+  const decoded = decode(token)
   if (
     !token ||
     !_AuthHandler.tokenStore.has(token) ||
@@ -562,7 +586,8 @@ app.get("/auth/verify", async (c) => {
       token,
       _AuthHandler.tokenStore.get(token) as string,
       "HS256"
-    ))
+    )) ||
+    _AuthHandler.ipStore.get(token) !== c.req.header("CF-Connecting-IP")
   ) {
     c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
     return c.json({
@@ -570,11 +595,7 @@ app.get("/auth/verify", async (c) => {
       message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
     });
   }
-  return c.json({
-    status: HttpCodes.OK,
-    message: "Token is valid",
-  });
-});
+})
 app.post("/auth/refreshtoken", async (c) => {
   let { token } = (await c.req.json()) as any;
   if (
@@ -643,3 +664,20 @@ process.on("beforeExit", async () => {
   }
   await rqHandler.crudManager.saveChanges();
 });
+
+if (process.argv[2] && process.argv[2].includes("--test")) {
+  console.log("Running tests...");
+ 
+  const proc = Bun.spawnSync(["bun", "test", "./TestCases/index.test.ts"], {
+    stdio: ["inherit", "inherit", "inherit"],
+  });
+
+
+  if (proc.exitCode === 0) {
+    console.log("Tests completed successfully.");
+    process.exit()
+  } else {
+    console.error(`Tests failed with exit code: ${proc.exitCode}`); 
+     process.exit()
+  }
+}
