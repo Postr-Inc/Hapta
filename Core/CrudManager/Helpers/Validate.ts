@@ -4,28 +4,28 @@ import { pb } from "../../../src";
 
 export default async function Validate(data: any, method: string, token?: string, cache?: any) {
     let error = null;
-
+    let decodedId = decode(token as any).payload.id;
     switch (method) {
         case "list":
             if (!data.limit) {
                 error = {
                     opCode: ErrorCodes.FIELD_MISSING,
-                    payload: { message: "Limit is required" }
+                    _payload: { message: "Limit is required" }
                 };
             } else if (!data.collection) {
                 error = {
                     opCode: ErrorCodes.FIELD_MISSING,
-                    payload: { message: "Collection is required" }
+                    _payload: { message: "Collection is required" }
                 };
             } else if (!data.page) {
                 error = {
                     opCode: ErrorCodes.FIELD_MISSING,
-                    payload: { message: "Page is required" }
+                    _payload: { message: "Page is required" }
                 };
             } else if (!data.options) {
                 error = {
                     opCode: ErrorCodes.FIELD_MISSING,
-                    payload: { message: "Options is required" }
+                   _payload: { message: "Options is required" }
                 };
             }
             break;
@@ -39,7 +39,7 @@ export default async function Validate(data: any, method: string, token?: string
                 };
                 break;
             } 
-            let decodedId = decode(token as any).payload.id;
+            
 
             switch (data.collection) {
                 case "users":
@@ -47,10 +47,14 @@ export default async function Validate(data: any, method: string, token?: string
                     let canUpdateIfNotOwner = ["followers"];
 
                     // Check authorization for each field
-                    Object.keys(data.fields).forEach((field) => {
-                        console.log(field)
-                        if (id !== decodedId && canUpdateIfOwner.includes(field)) {
-                            console.log(true)
+                    Object.keys(data.fields).forEach((field) => { 
+                        if(field == "following" && data.fields[field] == decodedId){
+                           error = {
+                            opCode: ErrorCodes.UNAUTHORIZED_REQUEST,
+                             payload: { message: "You are not authorized to perform this action"}
+                           }
+                        }
+                        else if (id !== decodedId && canUpdateIfOwner.includes(field)) { 
                             error = {
                                 opCode: ErrorCodes.UNAUTHORIZED_REQUEST,
                                 payload: { message: "You are not authorized to perform this action" }
@@ -155,6 +159,42 @@ export default async function Validate(data: any, method: string, token?: string
             break;
         default:
             break;
+        case "create":
+            if(!data.id){
+                 error = {
+                    opCode: ErrorCodes.FIELD_MISSING,
+                    payload: { message: "ID is required" }
+                };
+            }
+
+           
+
+
+           switch(data.collection){
+                case 'posts':
+                case 'comments':
+                     if(decodedId != data.author){
+                         error = {
+                          opCode: ErrorCodes.UNAUTHORIZED_REQUEST,
+                          payload: {message: "Invalid Request Cannot create post on behalf of another user"}
+                        }
+                     }
+
+                     if(!data.author){
+                        error = {
+                            opCode: ErrorCodes.FIELD_MISSING,
+                            payload: {message: "Post missing field - author, ensure the author field is passed in the Object"}
+                        }
+                     }else if(!data.content || data.content && data.content.length < 1){
+                        error = {
+                            opCode: ErrorCodes.FIELD_MISSING,
+                            payload: {message: "Post missing field - content, content must not be empty or undefined in the Object"}
+                        }
+                     }
+                
+ 
+
+           }
     }
 
     return error;
