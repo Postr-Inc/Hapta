@@ -10,6 +10,8 @@ import { c, cache } from "../../src";
 import { Tasks } from "../Concurrency/Enums/Tasks";
 import RecommendationAlgorithmHandler from "../RecommendationAlgorithmHandler";
 import { Post } from "../../Enums/RecordTypes/post";
+const batchQueue = []
+
 
 function joinExpand(expand: Array<string>, collection: string, method: string) {
   return expand
@@ -177,6 +179,8 @@ export default class CrudManager {
       order: payload.options?.order,
       expand: payload.options?.expand,
     };
+    console.log(token)
+    var decodedToken = decode(token)
     const cacheKey =
       payload.cacheKey ||
       `${payload.collection}_${payload.id}_list_${JSON.stringify(stableOptions)}_${decodedToken.payload.id}`;
@@ -215,7 +219,7 @@ export default class CrudManager {
       return { opCode: HttpCodes.OK, _payload: cacheData._payload };
     }
  
-    let hasIssue = await Validate(payload, "list");
+    let hasIssue = await Validate(payload, "list", token, cache); 
     if (hasIssue) return hasIssue;
 
 
@@ -418,6 +422,27 @@ export default class CrudManager {
         }
       }
 
+       if (payload.invalidateCache) {
+        let cacheKeys = this.cache.keys();
+
+        // Create a list of keys to invalidate by checking if any cache key starts with one of the invalidateCache entries
+        let keysToInvalidate = [];
+
+        for (let key of cacheKeys) {
+          for (let prefix of payload.invalidateCache) {
+            if (key.startsWith(prefix)) {
+              keysToInvalidate.push(key);
+              break; // No need to check other prefixes once matched
+            }
+          }
+        }
+
+        for (let key of keysToInvalidate) {
+          this.cache.delete(key);
+          console.log(`Invalidating : ${key}`)
+        }
+      }
+
       appendToQueue(
         { collection: payload.collection, id: payload.id },
         false,
@@ -448,6 +473,7 @@ export default class CrudManager {
           payload.fields[i] = handleFiles(payload.fields[i])[0]
         }
       }
+
       const res = await this.pb.collection(payload.collection).update(payload.id, payload.fields, {
         ...(payload.expand && {
           expand: joinExpand(payload.expand, payload.collection, "update"),
