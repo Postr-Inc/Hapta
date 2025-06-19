@@ -61,14 +61,14 @@ function isTokenValid(token: string) {
   return true
 }
 switch (true) {
-  case   !Bun.env.DatabaseURL:
+  case   !process.env.DatabaseURL:
     console.error({
       message: "Please set the DatabaseURL in your config file",
       status: ErrorCodes.CONFIGURATION_ERROR,
     });
     process.exit(1);
     break;
-  case !Bun.env.AdminEmail ||!Bun.env.AdminPassword:
+  case !process.env.AdminEmail ||!process.env.AdminPassword:
     console.error({
       message:
         "Please set the AdminEmail and AdminPassword in your config file",
