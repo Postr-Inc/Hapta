@@ -8,6 +8,7 @@ name: CI/CD Testing Pipeline
     branches:
       - main
       - develop
+
 jobs: 
   test_and_build:
     environment: Test Enviornment
@@ -15,10 +16,12 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
       - name: testsecret
         run: |
           if [ -z "$DATABASEURL" ]; then
@@ -26,13 +29,23 @@ jobs:
           else
             echo "DATABASEURL is defined (but hidden)"
           fi
+        env:
+          DATABASEURL: ${{ secrets.DATABASEURL }}
+
       - name: Install Dependencies
         run: bun install
         env:
           AdminPassword: ${{ secrets.ADMINPASSWORD }}
           AdminEmail: ${{ secrets.ADMINEMAIL }}
           DatabaseURL: ${{ secrets.DATABASEURL }}
-          TestUserEmail: ${{secrets.TESTUSEREMAIL}}
-          TestUserPassword: ${{secrets.TESTUSERPASSWORD}}
+          TestUserEmail: ${{ secrets.TESTUSEREMAIL }}
+          TestUserPassword: ${{ secrets.TESTUSERPASSWORD }}
+
       - name: Run Backend Tests
         run: bun run dev --test
+        env:
+          AdminPassword: ${{ secrets.ADMINPASSWORD }}
+          AdminEmail: ${{ secrets.ADMINEMAIL }}
+          DatabaseURL: ${{ secrets.DATABASEURL }}
+          TestUserEmail: ${{ secrets.TESTUSEREMAIL }}
+          TestUserPassword: ${{ secrets.TESTUSERPASSWORD }}
