@@ -8,8 +8,9 @@ name: CI/CD Testing Pipeline
     branches:
       - main
       - develop
-jobs:
+jobs: 
   test_and_build:
+    environment: Test Enviornment
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
