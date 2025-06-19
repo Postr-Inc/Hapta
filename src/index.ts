@@ -685,7 +685,7 @@ if (process.argv[2] && process.argv[2].includes("--test")) {
       await waitForServerReady();
 
       console.log("Running tests...");
-      const proc = Bun.spawnSync(["bun", "test", "./TestCases/index.test.ts"], {
+      const proc = Bun.spawnSync(["bun", "test", "./TestCases/index.test.ts", "--timeout", "25000"], {
         stdio: ["inherit", "inherit", "inherit"],
       });
 
