@@ -1,0 +1,36 @@
+name: CI/CD Testing Pipeline
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to the main branch
+      - develop # Or your development branch
+  pull_request:
+    branches:
+      - main # Trigger on PRs targeting the main branch
+      - develop # Or your development branch
+
+jobs:
+  test_and_build:
+    runs-on: ubuntu-latest # Use a fresh Ubuntu runner environment
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4 # Action to checkout your code
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2 # Official action to install Bun
+        with:
+          bun-version: latest  
+
+      - name: Install Dependencies
+        run: bun install  
+
+      - name: Run Backend Tests 
+        run: bun run dev --test
+        env: 
+          AdminPassword: ${{ secrets.AdminPassword }}
+          AdminEmail: ${{ secrets.AdminEmail }} 
+          DatabaseURL: ${{ secrets.DatabaseURL }} 
+          TestUserEmail: ${{secrets.TestUserEmail}}
+          TestUserPassword: ${{secrets.TestUserEmail}}
