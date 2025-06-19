@@ -22,10 +22,10 @@ jobs:
       - name: Install Dependencies
         run: bun install
         env:
-          AdminPassword: '${{ secrets.ADMINPASSWORD }}'
-          AdminEmail: '${{ secrets.ADMINEMAIL }}'
-          DatabaseURL: '${{ secrets.DATABASEURL }}'
-          TestUserEmail: '${{secrets.TESTUSEREMAIL}}'
-          TestUserPassword: '${{secrets.TESTUSERPASSWORD}}'
+          AdminPassword: ${{ secrets.ADMINPASSWORD }}
+          AdminEmail: ${{ secrets.ADMINEMAIL }}
+          DatabaseURL: ${{ secrets.DATABASEURL }}
+          TestUserEmail: ${{secrets.TESTUSEREMAIL}}
+          TestUserPassword: ${{secrets.TESTUSERPASSWORD}}
       - name: Run Backend Tests
         run: bun run dev --test
