@@ -21,25 +21,9 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
-      - name: testsecret
-        run: |
-          if [ -z "$DATABASEURL" ]; then
-            echo "DATABASEURL is undefined"
-          else
-            echo "DATABASEURL is defined (but hidden)"
-          fi
-        env:
-          DATABASEURL: ${{ secrets.DATABASEURL }}
-
+          
       - name: Install Dependencies
         run: bun install
-        env:
-          AdminPassword: ${{ secrets.ADMINPASSWORD }}
-          AdminEmail: ${{ secrets.ADMINEMAIL }}
-          DatabaseURL: ${{ secrets.DATABASEURL }}
-          TestUserEmail: ${{ secrets.TESTUSEREMAIL }}
-          TestUserPassword: ${{ secrets.TESTUSERPASSWORD }}
 
       - name: Run Backend Tests
         run: bun run dev --test
