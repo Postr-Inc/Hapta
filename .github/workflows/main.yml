@@ -27,7 +27,7 @@ jobs:
         run: bun install  
 
       - name: Run Backend Tests 
-        run: bun run dev --test
+        run: AdminPassword=${{secrets.ADMINPASSWORD}} TestUserEmail=${{secrets.TESTUSEREMAIL}} TestUserPassword=${{secrets.TESTUSERPASSWORD}} DatabaseURL=${{secrets.DATABASEURL}} bun run dev --test
         env: 
           AdminPassword: ${{ secrets.ADMINPASSWORD }}
           AdminEmail: ${{ secrets.ADMINEMAIL }} 
