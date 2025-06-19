@@ -648,6 +648,19 @@ Bun.serve({
   fetch: app.fetch,
 });
 
+async function waitForServerReady(url = `http://localhost:${config.Server.Port || 3000}`, timeoutMs = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return;
+    } catch {
+      // Server not ready yet
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`Server not ready after ${timeoutMs} ms`);
+}
 console.log(` 
   __  __            __       
   / / / /___ _____  / /_____ _
@@ -667,18 +680,25 @@ process.on("beforeExit", async () => {
 });
 
 if (process.argv[2] && process.argv[2].includes("--test")) {
-  console.log("Running tests...");
- 
-  const proc = Bun.spawnSync(["bun", "test", "./TestCases/index.test.ts"], {
-    stdio: ["inherit", "inherit", "inherit"],
-  });
+  (async () => {
+    try {
+      await waitForServerReady();
 
+      console.log("Running tests...");
+      const proc = Bun.spawnSync(["bun", "test", "./TestCases/index.test.ts"], {
+        stdio: ["inherit", "inherit", "inherit"],
+      });
 
-  if (proc.exitCode === 0) {
-    console.log("Tests completed successfully.");
-    process.exit()
-  } else {
-    console.error(`Tests failed with exit code: ${proc.exitCode}`); 
-     process.exit()
-  }
+      if (proc.exitCode === 0) {
+        console.log("Tests completed successfully.");
+        process.exit(0);
+      } else {
+        console.error(`Tests failed with exit code: ${proc.exitCode}`);
+        process.exit(proc.exitCode);
+      }
+    } catch (err) {
+      console.error("Server did not become ready:", err);
+      process.exit(1);
+    }
+  })();
 }
