@@ -3,12 +3,13 @@ import { sign } from 'hono/jwt'
 import { ErrorCodes } from '../../Enums/Errors';
 import { setCookie } from 'hono/cookie';
 import { HttpCodes } from '../../Enums/HttpCodes';
-const config = require(process.cwd() + '/config.toml')
+import config from '../../config';
 export default class AuthHandler{
      pb: Pocketbase;
      SuccessFulLogins: Map<string, string>
      tokenStore: Map<string, string>
      ipStore: Map<string, string>
+     adminTokenStore: Map<string, string>
      constructor(
         pb: Pocketbase
      ) {
@@ -16,14 +17,17 @@ export default class AuthHandler{
         this.SuccessFulLogins = new Map()
         this.tokenStore = new Map()
         this.ipStore = new Map()
+        this.adminTokenStore = new Map()
      }
 
-     public async rollNewToken(oldToken: string, data: any){
+     public async rollNewToken(oldToken: string, data: any, isBasicToken?: boolean){
        let tokenBody = {
             ...data,
+            ...(isBasicToken && {isBasic: true, permissions: ["read"]}),
+            ...(!isBasicToken && {isBasic: false, permissins: ["read", "write", "delete"]}),
             exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 // 7 days
        }
-       let newSig = config.security.Secret + oldToken.split('-')[1] + Math.random().toString(36).substring(2, 15);
+       let newSig = config.Security.Secret + oldToken.split('-')[1] + Math.random().toString(36).substring(2, 15);
        let newToken = await sign(tokenBody, newSig, "HS256") as string; 
        this.SuccessFulLogins.set(data.id, oldToken.split('-')[0] + "-" + newToken)
        this.tokenStore.set(newToken, newSig) 
@@ -116,6 +120,7 @@ export default class AuthHandler{
                 filter: `account="${user.record.id}"`,
                 batch: Number.MAX_SAFE_INTEGER
             })  as any
+            if(deviceInfo && deviceInfo.length > 0){
             let deviceExists =  ActiveDevices.some((device: any) => device.ip === ipAddress)
             let deviceName = deviceInfo.split(')')[0].split('(')[1]  || 'Unknown Device'
 
@@ -135,6 +140,8 @@ export default class AuthHandler{
                     lastLogin: new Date().toISOString()
                 })
             } 
+            }
+            
  
 
             const payload = {
@@ -142,7 +149,9 @@ export default class AuthHandler{
                 exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
             }
 
-            let token = await sign(payload, config.security.Secret + password , "HS256") as string;
+            console.log(config)
+
+            let token = await sign(payload, config.Security.Secret + password , "HS256") as string;
             
             this.SuccessFulLogins.set(user.record.id, ipAddress +"-"+ token)
             // remove last token with same ip
@@ -151,7 +160,7 @@ export default class AuthHandler{
                 this.tokenStore.delete(lastToken.split('-')[1])
                 this.ipStore.delete(lastToken.split('-')[1])
             }
-            this.tokenStore.set(token, config.security.Secret + password)
+            this.tokenStore.set(token, config.Security.Secret + password)
             this.ipStore.set(token, ipAddress)
             user.record.ActiveDevices = ActiveDevices
             return hono.json({
