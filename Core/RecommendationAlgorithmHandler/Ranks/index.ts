@@ -14,7 +14,7 @@ export enum Ranks {
     // Score boundaries
     minScore = -1,   // Minimum possible score
     maxScore = 1,    // Maximum possible score
-  
+  oldPostPenalty = 0.5,
     // Boosts
     /**
      * Boost for posts with multiple hashtags.
