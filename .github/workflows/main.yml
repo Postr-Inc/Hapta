@@ -29,8 +29,8 @@ jobs:
       - name: Run Backend Tests 
         run: bun run dev --test
         env: 
-          AdminPassword: ${{ secrets.AdminPassword }}
-          AdminEmail: ${{ secrets.AdminEmail }} 
-          DatabaseURL: ${{ secrets.DatabaseURL }} 
-          TestUserEmail: ${{secrets.TestUserEmail}}
-          TestUserPassword: ${{secrets.TestUserEmail}}
+          AdminPassword: ${{ secrets.ADMINPASSWORD }}
+          AdminEmail: ${{ secrets.ADMINEMAIL }} 
+          DatabaseURL: ${{ secrets.DATABASEURL }} 
+          TestUserEmail: ${{secrets.TESTUSEREMAIL}}
+          TestUserPassword: ${{secrets.TESTUSERPASSWORD}}
