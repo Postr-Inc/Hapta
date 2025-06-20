@@ -33,8 +33,6 @@ jobs:
           AdminPassword: ${{ secrets.ADMINPASSWORD }}
           AdminEmail: ${{ secrets.ADMINEMAIL }}
           DatabaseURL: ${{ secrets.DATABASEURL }}
-          TestUserEmail: ${{ secrets.TESTUSEREMAIL }}
-          TestUserPassword: ${{ secrets.TESTUSERPASSWORD }}
 
       - name: Wait for Server to Be Ready
         run: |
@@ -50,8 +48,5 @@ jobs:
       - name: Run Backend Tests
         run: bun test
         env:
-          AdminPassword: ${{ secrets.ADMINPASSWORD }}
-          AdminEmail: ${{ secrets.ADMINEMAIL }}
-          DatabaseURL: ${{ secrets.DATABASEURL }}
           TestUserEmail: ${{ secrets.TESTUSEREMAIL }}
           TestUserPassword: ${{ secrets.TESTUSERPASSWORD }}
