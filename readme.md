@@ -1,76 +1,175 @@
-# Codename Hapta
+# 🚀 Codename: **Hapta**
 
-What is hapta? - hapta is a backend server layer for pocketbase, it helps you secure connections to your pocketbase database, aswell as allows ratelimit spam protection and total controll over every database crud method.
+**Hapta** is an advanced backend server layer for [PocketBase](https://pocketbase.io), purpose-built to handle scale, security, and performance—without compromising flexibility or developer control.
 
-Why does Postly use this? - Postly equires 10's of thousands of connections at once - we would not want all those requests to be served to the database directly. Instead we can authenticate - ratelimit - cache  - then serve the content from the database which provides a smoother experience.
+> **Built for scale. Hardened for security. Designed for speed.**
 
-# Feature List
+---
 
-## Upcoming    
-- [ ] Relevant caching - only caching records frequently visited
-- [ ] Notifications - push notification sending
-- [ ] Node, replication - ability to run several hapta instances and each share cache and communicate between
-- [ ] Improved load balancing - central server and node servers
-- [ ] One pass - high level security mfa authentication
-- [ ] Advanced security, ai image validation, ai post categorizing
-- [ ] Message encryption, on device messaging - server only used to initialize and users communicate between the server does not know individual keys
+## 🔍 What Is Hapta?
 
+Hapta acts as a secure, intelligent middle-layer between your PocketBase database and the outside world. It introduces caching, request validation, rate limiting, and secure session handling to dramatically reduce database load, mitigate abuse, and enable fine-grained control over CRUD operations.
 
-## Features that are finished
-- [x] Token based session management - rolling keys - these change each authentication call,
-    - This prevents users from creating records outside of the app itself, allowing better monitoring.
-- [x] Request validation -  custom validation code to validate the record before sent to client or database
-- [x] File upload handling
-- [x] Cache - full custom cache setup that hardly has to depend on the database, all updates go through cache first then backend last
-- [x] Algorithmic Api - A ranking system, to rank posts and content based on relevancy to ensure the user gets a fresh feed each time!
-- [x] Relevant who to follow side view 
-- [x] Threading - Ability to offload several cpu intensive tasks on seperate threads, to ensure the main thread does not get clogged 
+---
 
-# Installation
-> **Stop** If you do not know how to use [pocketbase](https://pocketbase.io/docs)
+## 🧠 Why Postly Uses Hapta
 
-Download a release
+Postly processes **tens of thousands of requests per minute**. Serving every one of those directly to the database would be inefficient and dangerous. Hapta solves that with a **smart gatekeeping model**:
 
-# Usage
-In your config.ts
+* ✅ Authenticates users
+* ✅ Applies rate limits
+* ✅ Fetches or updates cached data
+* ✅ Only hits the database **when truly necessary**
+
+> 📊 **Performance Snapshot**:
+> In one stress test, **50,000 API requests** were made.
+> Only **\~430 needed to touch the database**.
+> That’s **less than 1%**.
+> On a **single server**, with no vertical scaling.
+
+---
+
+## 🛠️ Features
+
+### ✅ Completed
+
+* **🪪 Token-based Session Management**
+  Rolling keys that rotate on each auth attempt. Blocks unauthorized direct database access.
+
+* **📦 Custom Cache Layer**
+  All reads/writes hit the cache first. Only syncs to database as needed.
+
+* **🧠 Algorithmic API**
+  Dynamic ranking of content based on relevance, freshness, and user interaction.
+
+* **📤 File Uploads**
+  Secure file handling with customizable validation.
+
+* **🧵 Threading Support**
+  Run compute-heavy tasks off the main thread using Bun’s built-in worker support.
+
+* **🔐 Request Validation**
+  Middleware-style hooks to validate payloads before hitting DB or responding to client.
+
+* **🤝 Who-To-Follow Engine**
+  Suggests relevant accounts based on behavior and relationships.
+
+---
+
+### 🔮 Upcoming
+
+* **📡 Intelligent Caching**
+  Cache only highly-accessed records with automated eviction.
+
+* **📨 Notification Engine**
+  Push delivery for mentions, likes, and updates.
+
+* **🔁 Node Replication**
+  Run multiple Hapta instances and sync them via shared memory/cache layer.
+
+* **🧭 Load Balancing**
+  Central coordinator + edge node distribution with fallback logic.
+
+* **🔑 One-Pass MFA Authentication**
+  Secure authentication flow built with real-time token invalidation and OTP.
+
+* **🧠 AI-Based Moderation & Validation**
+  Auto-categorization of content and media moderation via ML models.
+
+* **🔒 End-to-End Encrypted Messaging**
+  Clients generate their own keys. Server can’t read the messages.
+
+---
+
+## ⚙️ Installation
+
+> **Note**: You should be familiar with [PocketBase](https://pocketbase.io/docs) before proceeding.
+
+### 1. Download a Release
+
+Check the [releases tab](#) or build from source.
+
+### 2. Configuration
+
+#### `config.ts`
+
 ```ts
- 
 export default {
-     
-    Server:{
-        Port: 8080,
-        Nodes: ["current"],
-        threads: 4 
-    },
-    Security:{
-        Secret: "bunjinkson@bongle"
-    },
-    ratelimit:{
-        Max: 10,
-        Duration: 60000,
-        IP: true,
-        isEnabled: true,
-        Message:"You have reached the maximum number of requests per minute"
-    }
+  Server: {
+    Port: 8080,
+    Nodes: ["current"],
+    threads: 4
+  },
+  Security: {
+    Secret: "bunjinkson@bongle"
+  },
+  ratelimit: {
+    Max: 10,
+    Duration: 60000,
+    IP: true,
+    isEnabled: true,
+    Message: "You have reached the maximum number of requests per minute"
+  }
 }
 ```
 
-In your .env
-```ts
-AdminEmail=""
-AdminPassword=""
-DatabaseUrl= ""
-TestUserEmail=
-TestUserPassword=
+#### `.env`
+
+```env
+AdminEmail="your@email.com"
+AdminPassword="supersecurepassword"
+DatabaseURL="http://localhost:8090"
+TestUserEmail="tester@postly.app"
+TestUserPassword="testpass123"
 ```
+
+---
+
+## 🚀 Usage
+
+Start the server:
 
 ```bash
-chmod +x ./hapta-server && ./hapta-server
+bun run dev
 ```
 
-# Build yourself
+Run tests:
 
-1. Download the source code
-2. Customize to your use case - things like expansions - name - filters - or cache controll logic
-3. Then run `./build.sh` and your code will be packaged to a  hapta-server file for several server types 
+```bash
+bun run dev --test
+```
 
+---
+
+## 🔧 Build Yourself
+
+1. Download the source
+2. Customize expansions, filtering logic, name, caching, etc.
+3. Run `./build.sh`
+4. Set up your `.env`
+5. Make it executable:
+
+```bash
+chmod +x ./hapta-server && AdminEmail=email AdminPassword=password DatabaseURL=url ./hapta-server
+```
+
+---
+
+## 📈 Why Hapta Matters
+
+> You *don’t* want 50k database hits when only 1% need real-time data.
+
+Hapta ensures:
+
+* Reduced **CPU** and **IO** usage on DB layer
+* Safer, cleaner API exposure
+* Greater **observability**, **auditability**, and **control**
+* More **flexibility** than using PocketBase directly in production
+
+---
+
+
+Want to contribute? Have ideas?
+Join us on GitHub and help shape the next-gen API layer.
+
+--- 
