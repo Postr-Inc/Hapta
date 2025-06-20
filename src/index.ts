@@ -46,6 +46,9 @@ const rateLimites = new Map();
 
 export const pb = new Pocketbase(Bun.env.DatabaseURL);
 
+pb.admins.client.autoCancellation(false);
+pb.autoCancellation(false)
+
 export const _AuthHandler = new AuthHandler(pb);
  
 function isTokenValid(token: string) {
@@ -89,9 +92,7 @@ export {
   summaryVocabulary,
   textToVector,
   vocabulary,
-};
-pb.admins.client.autoCancellation(false);
-
+}; 
 try {
   await pb.admins.authWithPassword(
     Bun.env.AdminEmail,
