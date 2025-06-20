@@ -28,7 +28,7 @@ jobs:
         run: bun install
 
       - name: Start Backend Server in Background
-        run: bun run dev & # Or replace with your actual server command
+        run: bun run src/index.ts & # Or replace with your actual server command
         env:
           AdminPassword: ${{ secrets.ADMINPASSWORD }}
           AdminEmail: ${{ secrets.ADMINEMAIL }}
