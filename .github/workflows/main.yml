@@ -1,5 +1,6 @@
 name: CI/CD Testing Pipeline
-'on':
+
+on:
   push:
     branches:
       - main
@@ -11,8 +12,9 @@ name: CI/CD Testing Pipeline
 
 jobs: 
   test_and_build:
-    environment: Test Enviornment
+    environment: Test Environment
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -25,8 +27,28 @@ jobs:
       - name: Install Dependencies
         run: bun install
 
+      - name: Start Backend Server in Background
+        run: bun run dev & # Or replace with your actual server command
+        env:
+          AdminPassword: ${{ secrets.ADMINPASSWORD }}
+          AdminEmail: ${{ secrets.ADMINEMAIL }}
+          DatabaseURL: ${{ secrets.DATABASEURL }}
+          TestUserEmail: ${{ secrets.TESTUSEREMAIL }}
+          TestUserPassword: ${{ secrets.TESTUSERPASSWORD }}
+
+      - name: Wait for Server to Be Ready
+        run: |
+          echo "Waiting for server to be ready..."
+          for i in {1..10}; do
+            if curl --silent http://localhost:8080/health | grep -q "OK"; then
+              echo "Server is up!"
+              break
+            fi
+            sleep 2
+          done
+
       - name: Run Backend Tests
-        run: bun run dev --test
+        run: bun test
         env:
           AdminPassword: ${{ secrets.ADMINPASSWORD }}
           AdminEmail: ${{ secrets.ADMINEMAIL }}
