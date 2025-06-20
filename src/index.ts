@@ -59,14 +59,14 @@ function isTokenValid(token: string) {
   return true
 }
 switch (true) {
-  case   !process.env.DatabaseURL:
+  case   !Bun.env.DatabaseURL:
     console.error({
       message: "Please set the DatabaseURL in your config file",
       status: ErrorCodes.CONFIGURATION_ERROR,
     });
     process.exit(1);
     break;
-  case !process.env.AdminEmail ||!process.env.AdminPassword:
+  case !Bun.env.AdminEmail ||!Bun.env.AdminPassword:
     console.error({
       message:
         "Please set the AdminEmail and AdminPassword in your config file",
@@ -685,7 +685,7 @@ console.log(`
 `);
 
 process.on("beforeExit", async () => {
-  if (process.env.BLUENODE === "true") {
+  if (Bun.env.BLUENODE === "true") {
     // EXPORT cache data to a file for GREEN NODE
   }
   await rqHandler.crudManager.saveChanges();
