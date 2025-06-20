@@ -7,7 +7,6 @@ import config from "../config"
 import { webSocketLimiter } from "hono-rate-limiter";
 import crypto from 'crypto'
 import { rateLimiter } from "hono-rate-limiter";
-
 import { bearerAuth } from "hono/bearer-auth";
 import { HTTPException } from "hono/http-exception";
 import { cors } from "hono/cors";
@@ -48,15 +47,14 @@ const rateLimites = new Map();
 export const pb = new Pocketbase(Bun.env.DatabaseURL);
 
 export const _AuthHandler = new AuthHandler(pb);
-
-
+ 
 function isTokenValid(token: string) {
   if ( 
     !token ||
    !_AuthHandler.tokenStore.has(token) ||
     !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
   ) {
-     return true
+     return false
   }
   return true
 }
@@ -120,20 +118,28 @@ const parseCookies = (cookie: string) => {
       return acc;
     }, {});
 };
+
 const limiter =
-  config.hasOwnProperty("ratelimits") && config.ratelimit.isEnabled
-    ? rateLimiter({
-      windowMs: config.ratelimit.Duration || 15 * 60 * 1000, // 15 minutes
-      limit: config.ratelimit.Max || 100,
-      standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
-      keyGenerator: (c) => String(getCookie(c, "Authorization")),
-      message:
-        config.ratelimit.Message ||
-        "You have exceeded the 100 requests in 15 minutes limit!",
-    })
-    : null;
+  config.hasOwnProperty('ratelimit') && config.ratelimit.isEnabled
+    ?    rateLimiter({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 100, // 100 requests per window
+    standardHeaders: "draft-6", // "RateLimit-*" headers
+    keyGenerator: (c) => {
+      // Use IP address or fallback
+      return (
+        c.req.header("x-forwarded-for") ||
+        c.req.raw.headers.get("cf-connecting-ip") || // for Cloudflare
+        c.req.raw.headers.get("x-real-ip") ||
+        "anon"
+      );
+    },
+    message: "Rate limit exceeded. Please try again later.",
+  })
+    : null
+
 if (limiter) {
-  app.use(limiter);
+  app.use('*', limiter) // Important: apply to all routes
 }
 
 const wsLimiter = webSocketLimiter({
@@ -198,6 +204,7 @@ app.get("*", (c, next) => {
     rt.setRateLimit(ip);
   }
   if (config.ratelimit.isEnabled) {
+    console.log("ratelimit enabled")
     if (!rt.checkRateLimit(ip)) { 
       c.status(ErrorCodes.RATE_LIMIT);
       return c.json({
@@ -559,22 +566,27 @@ app.post("/auth/register", async (c) => {
 });
 
 app.get("/auth/verify", async (c) => {
-  let token = c.req.header("Authorization");
+  const token = c.req.header("Authorization");
 
-  switch (isTokenValid(token)) {
-    case true:
+  try {
+    if (isTokenValid(token)) {
+      c.status(HttpCodes.OK);
       return c.json({
         status: HttpCodes.OK,
         message: "Token is valid",
       });
-    case false:
+    } else {
       c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
       return c.json({
         status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
         message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
       });
+    }
+  } catch (error) {
+    console.log(error);
+    c.status(500);
+    return c.json({ status: 500, message: "Internal Server Error" });
   }
-
 });
 
 app.delete('/auth/delete-account', async (c) => {
@@ -685,7 +697,7 @@ if (process.argv[2] && process.argv[2].includes("--test")) {
       await waitForServerReady();
 
       console.log("Running tests...");
-      const proc = Bun.spawnSync(["bun", "test", "./TestCases/index.test.ts", "--timeout", "25000"], {
+      const proc = Bun.spawnSync(["bun", "test", "./TestCases/index.test.ts"], {
         stdio: ["inherit", "inherit", "inherit"],
       });
 
