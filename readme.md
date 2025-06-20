@@ -51,9 +51,6 @@ Postly processes **tens of thousands of requests per minute**. Serving every one
 * **🔐 Request Validation**
   Middleware-style hooks to validate payloads before hitting DB or responding to client.
 
-* **🤝 Who-To-Follow Engine**
-  Suggests relevant accounts based on behavior and relationships.
-
 ---
 
 ### 🔮 Upcoming
