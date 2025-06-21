@@ -182,6 +182,7 @@ const rt = new RateLimitHandler();
 app.get("/", (c) => {
   return c.json({ status: HttpCodes.OK, message: "Server is running" });
 });
+
 app.get("*", (c, next) => {
   // if route is embed.postlyapp.com
   let host = c.req.header("host");
@@ -229,6 +230,7 @@ app.get("*", (c, next) => {
     c.req.url !== "/auth/requestPasswordReset" &&
     c.req.url !== "/auth/resetPassword" &&
     c.req.url.includes("/embed") == false &&
+    c.req.url.includes("/opengraph/embed") == false &&
     c.req.url !== "/auth/get-basic-auth-token" &&
     c.req.url !== "/auth/login" &&
     c.req.url.includes("/api/files") == false &&
@@ -236,7 +238,7 @@ app.get("*", (c, next) => {
     host?.startsWith("embed") == false &&
     c.req.url.includes("/realtime") == false
   ) {
-    if (tokenIp !== ip && !decoded.payload.isBasicToken) {
+    if (tokenIp !== ip && decoded.payload && decoded?.payload.isBasicToken) {
       c.status(ErrorCodes.UNNAUTHORIZED_IP);
       return c.json({
         status: ErrorCodes.UNNAUTHORIZED_IP,
@@ -244,7 +246,7 @@ app.get("*", (c, next) => {
       });
     }
     if (
-      decoded?.payload.isBasicToken ||
+      decoded?.payload && decoded.payload.isBasicToken ||
       token &&
       _AuthHandler.tokenStore.has(token) &&
       verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
