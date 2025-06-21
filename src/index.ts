@@ -4,7 +4,7 @@ import CacheController from "../CacheManager";
 import Pocketbase from "pocketbase";
 import { ErrorCodes, ErrorMessages } from "../../Enums/Errors";
 import { HttpCodes } from "../../Enums/HttpCodes";
-import Validate from "./Helpers/Validate";
+import Validate from "../Core/CrudManager/Helpers/Validate";
 import { generateHashtext } from "../Ai";
 import { c, cache } from "../../src";
 import { Tasks } from "../Concurrency/Enums/Tasks";
