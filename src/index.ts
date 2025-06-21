@@ -243,6 +243,16 @@ app.get("*", (c, next) => {
       _AuthHandler.tokenStore.has(token) &&
       verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
     ) { 
+      if(decoded?.payload.isBasicToken && c.req.url.includes("/action/posts/")|| 
+        decoded?.payload.isBasicToken && c.req.url.includes("/action/users")
+        || decoded?.payload.isBasicToken && c.req.url.includes("/action/comments/")
+      ){
+        c.status(ErrorCodes.UNAUTHORIZED_REQUEST);
+        return c.json({
+           status: ErrorCodes.UNAUTHORIZED_REQUEST,
+            message: ErrorMessages[ErrorCodes.UNAUTHORIZED_REQUEST],
+          });
+      }
       c.status(HttpCodes.OK);
       return next();
     } else { 
@@ -489,10 +499,12 @@ app.post("/auth/login", async (c) => {
 const rqHandler = new RequestHandler();
 
 app.post("/auth/get-basic-auth-token", async (c) => {
+  let sig = config.Security.Secret + crypto.randomUUID()
   let token = await sign({
     isBasicToken: true,
     permissions: ["read", "write", "delete"]
-  }, config.Security.Secret + crypto.randomUUID(), "HS256") as string;
+  }, sig, "HS256") as string;
+  _AuthHandler.tokenStore.set(token, sig)
 
   return c.json({ status: 200, message: "Successfully created basic auth token", token })
 })
@@ -544,85 +556,9 @@ app.post("/collection/:collection", async (c) => {
 });
 
 
-app.post("/actions/users/:action_type", async (c) => {
-  const { action_type } = c.req.param();
-  const { targetUserId } = await c.req.json();
-  const token = c.req.header("Authorization");
-
-  if (!token) {
-    return c.json({
-      status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
-      message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
-    }, ErrorCodes.INVALID_OR_MISSING_TOKEN);
-  }
-
-  const decodedToken = decode(token);
-  const isBasicToken = decodedToken?.payload?.isBasicToken;
-
-  if (
-    (!isBasicToken && !_AuthHandler.tokenStore.has(token)) ||
-    (!isBasicToken && !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256"))
-  ) {
-    return c.json({
-      status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
-      message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
-    }, ErrorCodes.INVALID_OR_MISSING_TOKEN);
-  }
-
-  const currentUserId = decodedToken.payload.id;
- 
-  const [targetUser, currentUser] = await Promise.all([
-    rqHandler.crudManager.get({ collection: "users", id: targetUserId }, token),
-    rqHandler.crudManager.get({ collection: "users", id: currentUserId }, token)
-  ]);
-
-  const targetFollowers = targetUser._payload.followers ?? [];
-  const currentFollowing = currentUser._payload.following ?? [];
-
-  switch (action_type) {
-    case "follow":
-      if (!targetFollowers.includes(currentUserId)) {
-        targetFollowers.push(currentUserId);
-      }
-      if (!currentFollowing.includes(targetUserId)) {
-        currentFollowing.push(targetUserId);
-      }
-      break;
-
-    case "unfollow": 
-      targetUser._payload.followers = targetFollowers.filter((id) => id !== currentUserId);
-      currentUser._payload.following = currentFollowing.filter((id) => id !== targetUserId);
-      break;
-
-    default:
-      return c.json({
-        status: ErrorCodes.INVALID_REQUEST,
-        message: "Invalid action type.",
-      }, ErrorCodes.INVALID_REQUEST);
-  }
-
-  // Persist updates
-  await Promise.all([
-    rqHandler.crudManager.update({
-      collection: "users",
-      id: currentUserId,
-      fields: { following: currentUser._payload.following },
-      invalidateCache: [`/u/${currentUser._payload.username}`]
-    }, token),
-    rqHandler.crudManager.update({
-      collection: "users",
-      id: targetUserId,
-      fields: { followers: targetUser._payload.followers },
-      invalidateCache: [`/u/${targetUser._payload.username}`]
-    }, token)
-  ]);
-
-  return c.json({ status: 200, message: "Action completed." });
-});
-
-app.post("/actions/posts/:action_type", async (c) => {
-  const { action_type } = c.req.param();
-  const { targetPostId } = await c.req.json();
+app.post("/actions/:type/:action_type", async (c) => {
+  const { type, action_type } = c.req.param();
+  const { targetId } = await c.req.json(); // generic target ID (post, user, or comment)
   const token = c.req.header("Authorization");
 
   // 🔐 Token validation
@@ -648,51 +584,99 @@ app.post("/actions/posts/:action_type", async (c) => {
 
   const currentUserId = decodedToken.payload.id;
 
-  // 🧠 Get the post
-  const post = await rqHandler.crudManager.get({
-    collection: "posts",
-    id: targetPostId
-  }, token);
+  try {
+    switch (type) {
+      case "users": {
+        const [targetUser, currentUser] = await Promise.all([
+          rqHandler.crudManager.get({ collection: "users", id: targetId }, token),
+          rqHandler.crudManager.get({ collection: "users", id: currentUserId }, token),
+        ]);
 
-  if (!post || !post._payload) {
-    return c.json({
-      status: ErrorCodes.NOT_FOUND,
-      message: "Post not found."
-    }, ErrorCodes.NOT_FOUND);
-  }
+        const targetFollowers = targetUser._payload.followers ?? [];
+        const currentFollowing = currentUser._payload.following ?? [];
 
-  const likes = post._payload.likes ?? [];
+        if (action_type === "follow") {
+          if (!targetFollowers.includes(currentUserId)) targetFollowers.push(currentUserId);
+          if (!currentFollowing.includes(targetId)) currentFollowing.push(targetId);
+        } else if (action_type === "unfollow") {
+          targetUser._payload.followers = targetFollowers.filter((id) => id !== currentUserId);
+          currentUser._payload.following = currentFollowing.filter((id) => id !== targetId);
+        } else {
+          throw new Error("Invalid action");
+        }
 
-  switch (action_type) {
-    case "like":
-      if (!likes.includes(currentUserId)) {
-        likes.push(currentUserId);
+        await Promise.all([
+          rqHandler.crudManager.update({
+            collection: "users",
+            id: currentUserId,
+            fields: { following: currentUser._payload.following },
+            invalidateCache: [`/u/${currentUser._payload.username}`],
+          }, token),
+          rqHandler.crudManager.update({
+            collection: "users",
+            id: targetId,
+            fields: { followers: targetUser._payload.followers },
+            invalidateCache: [`/u/${targetUser._payload.username}`],
+          }, token),
+        ]);
+        break;
       }
-      break;
 
-    case "unlike":
-      post._payload.likes = likes.filter((id) => id !== currentUserId);
-      break;
+      case "posts":
+      case "comments": {
+        console.log(targetId)
+        const collection = type;
+        const doc = await rqHandler.crudManager.get({
+          collection,
+          id: targetId,
+        }, token);
 
-    default:
-      return c.json({
-        status: ErrorCodes.INVALID_REQUEST,
-        message: "Invalid action type."
-      }, ErrorCodes.INVALID_REQUEST);
+        if (!doc || !doc._payload) {
+          return c.json({
+            status: ErrorCodes.NOT_FOUND,
+            message: `${type.slice(0, -1)} not found.`,
+          }, ErrorCodes.NOT_FOUND);
+        }
+
+        const likes = doc._payload.likes ?? [];
+
+        if (action_type === "like") {
+          if (!likes.includes(currentUserId)) likes.push(currentUserId);
+        } else if (action_type === "unlike") {
+          doc._payload.likes = likes.filter((id) => id !== currentUserId);
+        } else {
+          throw new Error("Invalid action");
+        }
+
+        const res = await rqHandler.crudManager.update({
+          collection,
+          id: targetId,
+          fields: {
+            likes: doc._payload.likes ?? likes,
+          },
+          invalidateCache: [`/${collection === "posts" ? "p" : "c"}/${doc._payload.id}`],
+        }, token);
+
+        return c.json({ status: 200, message: "Action completed.", res: res._payload });
+      }
+
+      default:
+        return c.json({
+          status: ErrorCodes.INVALID_REQUEST,
+          message: "Unsupported action target.",
+        }, ErrorCodes.INVALID_REQUEST);
+    }
+
+    return c.json({ status: 200, message: "Action completed." });
+
+  } catch (err: any) {
+    return c.json({
+      status: ErrorCodes.SYSTEM_ERROR,
+      message: err.message || "An error occurred",
+    }, ErrorCodes.SYSTEM_ERROR);
   }
-
-  // 💾 Save updated likes
-  const res = await rqHandler.crudManager.update({
-    collection: "posts",
-    id: targetPostId,
-    fields: {
-      likes: post._payload.likes ?? likes,
-    },
-    invalidateCache: [`/p/${post._payload.id}`]
-  }, token);
-
-  return c.json({ status: 200, message: "Action completed.", res: res._payload})
 });
+
 
 
 
