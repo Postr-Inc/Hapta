@@ -14,6 +14,7 @@ import { decode, sign, verify } from "hono/jwt";
 import RateLimitHandler from "../Core/RateLimiter";
 import MainDashboard from "../Core/AdminPanel/frontend_panel";
 import process from 'process'
+import * as cheerio from 'cheerio'
 import {
   getCookie,
   getSignedCookie,
