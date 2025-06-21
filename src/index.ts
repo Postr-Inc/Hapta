@@ -489,10 +489,12 @@ app.post("/auth/login", async (c) => {
 const rqHandler = new RequestHandler();
 
 app.post("/auth/get-basic-auth-token", async (c) => {
+  let sig = config.Security.Secret + crypto.randomUUID()
   let token = await sign({
     isBasicToken: true,
     permissions: ["read", "write", "delete"]
-  }, config.Security.Secret + crypto.randomUUID(), "HS256") as string;
+  }, sig, "HS256") as string;
+  _AuthHandler.tokenStore.set(token, sig)
 
   return c.json({ status: 200, message: "Successfully created basic auth token", token })
 })
