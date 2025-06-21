@@ -42,7 +42,7 @@ export const ErrorMessages = {
    [ErrorCodes.MISSING_EMAIL_OR_USERNAME]: 'Email or username is missing',
    [ErrorCodes.MISSING_PASSWORD]: 'Password is missing',
    [ErrorCodes.MISSING_IP_ADDRESS]: 'IP Address is missing',
-   [ErrorCodes.UNAUTHORIZED_REQUEST]: 'Unauthorized request',
+   [ErrorCodes.UNAUTHORIZED_REQUEST]: 'Unauthorized request, invalid or missing token',
    [ErrorCodes.MISSING_EMAIL]: 'Email is missing',
     [ErrorCodes.INTERNAL_SERVER_ERROR]: 'Internal server error',
     
