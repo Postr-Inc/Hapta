@@ -182,6 +182,7 @@ const rt = new RateLimitHandler();
 app.get("/", (c) => {
   return c.json({ status: HttpCodes.OK, message: "Server is running" });
 });
+
 app.get("*", (c, next) => {
   // if route is embed.postlyapp.com
   let host = c.req.header("host");
@@ -229,6 +230,7 @@ app.get("*", (c, next) => {
     c.req.url !== "/auth/requestPasswordReset" &&
     c.req.url !== "/auth/resetPassword" &&
     c.req.url.includes("/embed") == false &&
+    c.req.url.includes("/opengraph/embed") == false &&
     c.req.url !== "/auth/get-basic-auth-token" &&
     c.req.url !== "/auth/login" &&
     c.req.url.includes("/api/files") == false &&
@@ -236,7 +238,7 @@ app.get("*", (c, next) => {
     host?.startsWith("embed") == false &&
     c.req.url.includes("/realtime") == false
   ) {
-    if (tokenIp !== ip && !decoded.payload.isBasicToken) {
+    if (tokenIp !== ip && decoded.payload && decoded?.payload.isBasicToken) {
       c.status(ErrorCodes.UNNAUTHORIZED_IP);
       return c.json({
         status: ErrorCodes.UNNAUTHORIZED_IP,
@@ -244,7 +246,7 @@ app.get("*", (c, next) => {
       });
     }
     if (
-      decoded?.payload.isBasicToken ||
+      decoded?.payload && decoded.payload.isBasicToken ||
       token &&
       _AuthHandler.tokenStore.has(token) &&
       verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
@@ -272,6 +274,37 @@ app.get("*", (c, next) => {
   return next();
 });
 
+app.get('/opengraph/embed', async (c) => {
+  const url = c.req.query('url')
+
+  if (!url) {
+    return c.json({ error: 'Missing URL' }, 400)
+  }
+
+  try {
+    const response = await fetch(url)
+    const text = await response.text()
+
+    const $ = cheerio.load(text)
+
+    const getMeta = (name: string) =>
+      $(`meta[property="${name}"]`).attr('content') ||
+      $(`meta[name="${name}"]`).attr('content') ||
+      null
+
+    const metadata = {
+      title: getMeta('og:title') || $('title').text(),
+      description: getMeta('og:description') || '',
+      image: getMeta('og:image') || '',
+      url,
+    }
+
+    return c.json(metadata)
+  } catch (err) {
+    console.error('Failed to fetch OG metadata:', err)
+    return c.json({ error: 'Failed to fetch metadata' }, 500)
+  }
+})
 app.get(
   "/subscriptions",
   upgradeWebSocket((c) => {
