@@ -71,67 +71,46 @@ export default class CrudManager {
   public async create(payload: {
     collection: string;
     data: any;
-    expand: any[];
-    invalidateCache?: [string];
+    expand?: string[];
+    invalidateCache?: string[];
   }, token: string) {
-    let hasIssue = await Validate(payload, "create", token, this.cache);
+    // Validate input data early
+    const hasIssue = await Validate(payload.data, "create", token, this.cache);
     if (hasIssue) return hasIssue;
 
     try {
+      // Handle files in data if any
       if (payload.data.files && Array.isArray(payload.data.files)) {
         payload.data.files = handleFiles(payload.data.files);
       }
 
-      let res = await this.pb.collection(payload.collection).create(payload.data, {
-        ...(payload.expand && {
-          expand: joinExpand(payload.expand, payload.collection, "create"),
-        }),
+      // Create record in Pocketbase
+      const res = await this.pb.collection(payload.collection).create(payload.data, {
+        ...(payload.expand && { expand: joinExpand(payload.expand, payload.collection, "create") }),
       });
 
-      if (payload.invalidateCache) {
-        let cacheKeys = this.cache.keys();
-
-        // Create a list of keys to invalidate by checking if any cache key starts with one of the invalidateCache entries
-        let keysToInvalidate = [];
-
-        for (let key of cacheKeys) {
-          for (let prefix of payload.invalidateCache) {
-            if (key.startsWith(prefix)) {
-              keysToInvalidate.push(key);
-              break; // No need to check other prefixes once matched
-            }
-          }
-        } 
-
-        for (let key of keysToInvalidate) {
-          this.cache.delete(key);
-          console.log(`cache invalidated for key: ${key}`);
-        }
+      // Invalidate cache keys matching prefixes if needed
+      if (payload.invalidateCache?.length) {
+        this.invalidateCacheByPrefixes(payload.invalidateCache);
       }
 
-
-      // When a post is created, update each feed to include the new post
+      // Special logic for posts collection
       if (payload.collection === "posts") {
-        // 1. Generate hashtags and update hashtags collection
-        let hashTags = generateHashtext(payload.data.content);
-        for (let tag of hashTags) {
-          let hashTag = {
-            content: tag,
-            posts: [res.id],
-          }; 
-          var h = await this.pb.collection("hashtags").create(hashTag);
+        // 1. Generate and update hashtags
+        const hashTags = generateHashtext(payload.data.content);
+        for (const tag of hashTags) {
+          const hashTag = { content: tag, posts: [res.id] };
+          const h = await this.pb.collection("hashtags").create(hashTag);
           await this.pb.collection("posts").update(res.id, { hashtags: [...res.hashtags, h.id] });
         }
 
-        // 2. Update each feed in cache to include the new post
-        const keys = this.cache.keys();
-        for (const key of keys) {
+        // 2. Update all cached feeds by prepending new post
+        for (const key of this.cache.keys()) {
           if (key.includes("feed")) {
-            let cacheData = this.cache.get(key);
-            if (cacheData && Array.isArray(cacheData._payload)) {
-              // Add the new post to the feed's posts array
+            const cacheData = this.cache.get(key);
+            if (cacheData?._payload && Array.isArray(cacheData._payload)) {
               cacheData._payload = [res, ...cacheData._payload];
-              this.cache.set(key, cacheData, Date.now() + 3600 * 1000); // 1 hour
+              this.cache.set(key, cacheData, Date.now() + 3600 * 1000); // 1 hour cache
             }
           }
         }
@@ -139,7 +118,7 @@ export default class CrudManager {
 
       return { _payload: res, opCode: HttpCodes.OK, message: "Record created successfully" };
     } catch (error) {
-      console.error("Error creating record", error);
+      console.error("Error creating record:", error);
       return {
         _payload: null,
         opCode: ErrorCodes.SYSTEM_ERROR,
@@ -148,15 +127,30 @@ export default class CrudManager {
     }
   }
 
+  private invalidateCacheByPrefixes(prefixes: string[]) {
+    const cacheKeys = this.cache.keys();
+    for (const key of cacheKeys) {
+      if (prefixes.some(prefix => key.startsWith(prefix))) {
+        this.cache.delete(key);
+        console.log(`Cache invalidated for key: ${key}`);
+      }
+    }
+  }
+
   public async saveChanges() {
-    let allKeys = [
+    const allKeys = [
       ...createQueue.keys(),
       ...updateQueue.keys(),
       ...deleteQueue.keys(),
     ];
+
     for (const key of allKeys) {
       console.log(`Rolling queue for ${key}`);
-      await rollQueue(key, this.pb);
+      try {
+        await rollQueue(key, this.pb);
+      } catch (err) {
+        console.error(`Error rolling queue for ${key}:`, err);
+      }
     }
   }
 
@@ -169,147 +163,107 @@ export default class CrudManager {
       order?: "asc" | "desc";
       sort?: string;
       expand?: string[];
-      filter: string;
+      filter?: string;
       recommended?: boolean;
     };
   }, token: string) {
+    // Decode token once, handle errors gracefully
+    let decodedToken: { payload: { id: string } } | null = null;
+    try {
+      decodedToken = decode(token) as { payload: { id: string } };
+    } catch {
+      console.warn("Invalid token provided in list");
+    }
+
     const stableOptions = {
       filter: payload.options?.filter,
       sort: payload.options?.sort,
       order: payload.options?.order,
       expand: payload.options?.expand,
     };
-    console.log(token)
-    var decodedToken = decode(token)
+
+    // Compose cacheKey with fallback
     const cacheKey =
       payload.cacheKey ||
-      `${payload.collection}_${payload.id}_list_${JSON.stringify(stableOptions)}_${decodedToken.payload.id}`;
+      `${payload.collection}_${payload.page}_list_${JSON.stringify(stableOptions)}_${decodedToken?.payload.id ?? "guest"}`;
 
-    let cacheStatus = this.cache.timesVisited.get(payload.id) || { incremental: 0, cacheType: "six_hour_immediate" };
+    let cacheStatus = this.cache.timesVisited.get(cacheKey) ?? { incremental: 0, cacheType: "six_hour_immediate" };
     cacheStatus.incremental++;
     this.cache.timesVisited.set(cacheKey, cacheStatus);
 
+    // Determine expiration time dynamically based on frequency
     let expirationTime: number;
     if (cacheStatus.incremental > 5) {
       const minMinutes = 15, maxMinutes = 45;
-      const randomMinutes = Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
-      expirationTime = Date.now() + randomMinutes * 60 * 1000;
-      console.log(`Setting cache expiration for frequently accessed item (ID: ${cacheKey}, Key: ${cacheKey}) to ${randomMinutes} minutes.`);
+      expirationTime = Date.now() + (Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes) * 60 * 1000;
     } else if (cacheStatus.incremental > 0) {
       const minHours = 1, maxHours = 5;
-      const randomHours = Math.floor(Math.random() * (maxHours - minHours + 1)) + minHours;
-      expirationTime = Date.now() + randomHours * 60 * 60 * 1000;
-      console.log(`Setting cache expiration for less frequently accessed item (ID: ${cacheKey}, Key: ${cacheKey}) to 10 minutes.`);
+      expirationTime = Date.now() + (Math.floor(Math.random() * (maxHours - minHours + 1)) + minHours) * 60 * 60 * 1000;
     } else {
       expirationTime = Date.now() + 6 * 60 * 60 * 1000;
     }
 
-    const cacheData = this.cache.get(cacheKey);
- 
-    if (cacheData && cacheStatus.expirationTime > Date.now()) {
-      if (cacheStatus.expirationTime < expirationTime) {
-        this.cache.set(cacheKey, {
-          _payload: cacheData._payload,
-          expirationTime,
-        });
-        console.log(`Extended cache expiration for key: ${cacheKey} to new expiry.`);
+    // Check cached data
+    const cachedData = this.cache.get(cacheKey);
+    if (cachedData && cachedData.expirationTime > Date.now()) {
+      if (cachedData.expirationTime < expirationTime) {
+        this.cache.set(cacheKey, { ...cachedData, expirationTime });
+        console.log(`Extended cache expiration for key: ${cacheKey}`);
       }
- 
-
-      return { opCode: HttpCodes.OK, _payload: cacheData._payload };
+      return { opCode: HttpCodes.OK, _payload: cachedData._payload };
     }
- 
-    let hasIssue = await Validate(payload, "list", token, cache); 
+
+    // Validate request
+    const hasIssue = await Validate(payload, "list", token, this.cache);
     if (hasIssue) return hasIssue;
 
+    try {
+      // Sort string with default fallback
+      const sortString = payload.options?.sort || (payload.options?.order === "asc" ? "created" : "-created");
 
-    try { 
-      // Build the sort string correctly
-      let sortString = "";
-      if (payload.options?.sort) {
-        sortString = payload.options.sort;
-      } else {
-        sortString = (payload.options?.order === "asc" ? "created" : "-created");
-      }
+      let data = await this.pb.collection(payload.collection).getFullList({
+        sort: sortString,
+        filter: payload.options?.filter,
+        expand: joinExpand(payload.options?.expand || [], payload.collection, "list"),
+        cache: "force-cache",
+      }) as any[];
 
-      var data = await this.pb.collection(payload.collection).getFullList(
-        {
-          sort: sortString,
-          filter: payload.options?.filter,
-          expand: joinExpand(payload.options?.expand || [], payload.collection, "list"),
-          cache: "force-cache",
-        }
-      ) as Post[]
-      // ...existing code...
-      data = await c.run(Tasks.FILTER_THROUGH_LIST, {
-        list: data,
-        collection: payload.collection,
-      })
- 
+      // Custom filtering step
+      data = await c.run(Tasks.FILTER_THROUGH_LIST, { list: data, collection: payload.collection });
 
-      // Sort pinned first if needed
-      if (
-        payload.options?.sort?.includes("-created")) {
-        data = data.sort((a: any, b: any) => {
-          const dateA = new Date(a.created).getTime();
-          const dateB = new Date(b.created).getTime();
-          if (payload.options?.order === "asc") {
-            return dateA - dateB;
-          } else {
-            return dateB - dateA;
-          }
-        });
-      }
-
-      if (
-        payload.collection === "posts" &&
-        data.length > 0 &&
-        payload.options?.sort?.includes("-pinned")
-      ) {
+      // Sort pinned posts first if applicable
+      if (payload.options?.sort?.includes("-pinned") && payload.collection === "posts" && data.length > 0) {
         data = [
-          ...data.filter((post: any) => post.pinned),
-          ...data.filter((post: any) => !post.pinned),
+          ...data.filter(post => post.pinned),
+          ...data.filter(post => !post.pinned),
         ];
-
       }
 
-
-
-      // Now paginate the sorted data
-      var paginatedItems = data.slice(
-        (payload.page - 1) * payload.limit,
-        payload.page * payload.limit
-      );
-      // ...existing code...
-
+      // Paginate
+      const startIdx = (payload.page - 1) * payload.limit;
+      const paginatedItems = data.slice(startIdx, startIdx + payload.limit);
 
       const response = {
         _payload: paginatedItems,
-        totalItems: paginatedItems.length,
-        totalPages: Math.round(
-          data.length / payload.limit),
+        totalItems: data.length,
+        totalPages: Math.ceil(data.length / payload.limit),
         opCode: HttpCodes.OK,
       };
 
- 
-      this.cache.set(
-        cacheKey,
-        {
-          _payload: response._payload,
-          totalItems: response.totalItems,
-          totalPages: response.totalPages,
-        },
-        expirationTime
-      ); 
-      return {
-        _payload: response._payload,
-        totalItems: response.totalItems,
-        totalPages: response.totalPages,
-        opCode: HttpCodes.OK,
-      };
+      // Cache response
+      this.cache.set(cacheKey, {
+        ...response,
+        expirationTime,
+      });
+
+      return response;
     } catch (error) {
-      console.error("Error listing records", error);
-      return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR, message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
+      console.error("Error listing records:", error);
+      return {
+        _payload: null,
+        opCode: ErrorCodes.SYSTEM_ERROR,
+        message: ErrorMessages[ErrorCodes.SYSTEM_ERROR],
+      };
     }
   }
 
@@ -317,10 +271,8 @@ export default class CrudManager {
     collection: string;
     isEmbed: boolean;
     id: string;
-    options: { [key: string]: any };
+    options?: { [key: string]: any };
   }, token: string) {
-    // --- Validation ---
-    // Perform validation if the request is not an embed
     if (!payload.isEmbed) {
       const hasIssue = await Validate(payload, "get", token, this.cache);
       if (hasIssue) {
@@ -328,55 +280,45 @@ export default class CrudManager {
         return hasIssue;
       }
     }
+ 
 
     try {
-      let cacheKey: string;
-      if (payload.isEmbed) {
-        cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}`;
-      } else {
-        const decodedToken = decode(token) as { payload: { id: string } };
-        cacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}_${decodedToken.payload.id}`;
-      }
+      // Compose cacheKey including user id if not embed
+      const decodedToken = decode(token) as { payload: { id: string } };
+      const cacheKey = payload.isEmbed
+        ? `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}`
+        : `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options)}_${decodedToken.payload.id}`;
 
-      let cacheStatus = this.cache.timesVisited.get(payload.id) || { incremental: 0, cacheType: "six_hour_immediate" };
+      // Cache frequency management
+      let cacheStatus = this.cache.timesVisited.get(cacheKey) ?? { incremental: 0, cacheType: "six_hour_immediate" };
       cacheStatus.incremental++;
-      this.cache.timesVisited.set(payload.id, cacheStatus);
+      this.cache.timesVisited.set(cacheKey, cacheStatus);
 
       let expirationTime: number;
       if (cacheStatus.incremental > 5) {
         const minMinutes = 15, maxMinutes = 45;
-        const randomMinutes = Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
-        expirationTime = Date.now() + randomMinutes * 60 * 1000;
-        console.log(`Setting cache expiration for frequently cache reference (Cache_ID: ${payload.id}, Key: ${cacheKey}) to ${randomMinutes} minutes.`);
+        expirationTime = Date.now() + (Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes) * 60 * 1000;
       } else if (cacheStatus.incremental > 0) {
         const minHours = 1, maxHours = 5;
-        const randomHours = Math.floor(Math.random() * (maxHours - minHours + 1)) + minHours;
-        expirationTime = Date.now() + randomHours * 60 * 60 * 1000;
-        console.log(`Setting cache expiration for less frequently accessed cache reference (Cache_ID: ${payload.id}, Key: ${cacheKey}) to 10 minutes.`);
+        expirationTime = Date.now() + (Math.floor(Math.random() * (maxHours - minHours + 1)) + minHours) * 60 * 60 * 1000;
       } else {
         expirationTime = Date.now() + 6 * 60 * 60 * 1000;
       }
 
-      const cacheData = this.cache.get(cacheKey);
- 
-      if (cacheData && cacheStatus.expirationTime > Date.now()) {
-        if (cacheStatus.expirationTime < expirationTime) {
-          this.cache.set(cacheKey, {
-            _payload: cacheData._payload,
-            expirationTime,
-          });
-          console.log(`Extended cache expiration for key: ${cacheKey} to new expiry.`);
+      // Try cache hit
+      const cachedData = this.cache.get(cacheKey);
+      if (cachedData && cachedData.expirationTime > Date.now()) {
+        if (cachedData.expirationTime < expirationTime) {
+          this.cache.set(cacheKey, { ...cachedData, expirationTime });
+          console.log(`Extended cache expiration for key: ${cacheKey}`);
         }
-
-        return { opCode: HttpCodes.OK, _payload: cacheData._payload };
+        return { opCode: HttpCodes.OK, _payload: cachedData._payload };
       }
 
       console.log(`Cache miss for key: ${cacheKey}. Fetching data...`);
 
       const data = await this.pb.collection(payload.collection).getOne(payload.id, {
-        ...(payload.options && payload.options.expand && {
-          expand: joinExpand(payload.options.expand, payload.collection, "get"),
-        }),
+        ...(payload.options?.expand && { expand: joinExpand(payload.options.expand, payload.collection, "get") }),
       });
 
       const processed = await c.run(Tasks.FILTER_THROUGH_LIST, {
@@ -384,75 +326,56 @@ export default class CrudManager {
         collection: payload.collection,
       });
 
+      this.cache.set(cacheKey, {
+        _payload: processed[0],
+        expirationTime,
+      });
 
-
-      this.cache.set(
-        cacheKey,
-        {
-          _payload: processed[0],
-        },
-        expirationTime
-      );
-
-      // --- Return Success Response ---
       return { _payload: processed[0], opCode: HttpCodes.OK };
-
     } catch (error) {
-      // --- Error Handling ---
       console.error("Error getting record:", error);
-      return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR, message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
+      return {
+        _payload: null,
+        opCode: ErrorCodes.SYSTEM_ERROR,
+        message: ErrorMessages[ErrorCodes.SYSTEM_ERROR],
+      };
     }
   }
 
-  public async delete(payload: { collection: string; id: string; callback: any }, token: string) {
-    let decoded = decode(token).payload;
-    let hasIssue = await Validate(payload, "delete", token, this.cache);
+  public async delete(payload: {
+    collection: string;
+    id: string;
+    invalidateCache?: string[];
+  }, token: string) {
+    const hasIssue = await Validate(payload, "delete", token, this.cache);
     if (hasIssue) return hasIssue;
 
     try {
-      const keys = this.cache.keys();
-      for (let key of keys) {
-        let cacheData = this.cache.get(key);
-        if (Array.isArray(cacheData._payload)) {
-          let exists = cacheData._payload.find((item: any) => item.id === payload.id);
-          if (exists) {
+      // Remove item from cached lists
+      for (const key of this.cache.keys()) {
+        const cacheData = this.cache.get(key);
+        if (cacheData?._payload && Array.isArray(cacheData._payload)) {
+          if (cacheData._payload.find((item: any) => item.id === payload.id)) {
             cacheData._payload = cacheData._payload.filter((item: any) => item.id !== payload.id);
-            this.cache.set(key, cacheData, Date.now() + 3600 * 1000); // 1 hour
+            this.cache.set(key, cacheData, Date.now() + 3600 * 1000);
           }
         }
       }
 
-       if (payload.invalidateCache) {
-        let cacheKeys = this.cache.keys();
-
-        // Create a list of keys to invalidate by checking if any cache key starts with one of the invalidateCache entries
-        let keysToInvalidate = [];
-
-        for (let key of cacheKeys) {
-          for (let prefix of payload.invalidateCache) {
-            if (key.startsWith(prefix)) {
-              keysToInvalidate.push(key);
-              break; // No need to check other prefixes once matched
-            }
-          }
-        }
-
-        for (let key of keysToInvalidate) {
-          this.cache.delete(key);
-          console.log(`Invalidating : ${key}`)
-        }
+      // Invalidate cache keys by prefixes if requested
+      if (payload.invalidateCache?.length) {
+        this.invalidateCacheByPrefixes(payload.invalidateCache);
       }
-
-      appendToQueue(
-        { collection: payload.collection, id: payload.id },
-        false,
-        "delete"
-      );
+ 
 
       return { _payload: null, opCode: HttpCodes.OK };
     } catch (error) {
-      console.error("Error deleting record", error);
-      return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR, message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
+      console.error("Error deleting record:", error);
+      return {
+        _payload: null,
+        opCode: ErrorCodes.SYSTEM_ERROR,
+        message: ErrorMessages[ErrorCodes.SYSTEM_ERROR],
+      };
     }
   }
 
@@ -460,51 +383,41 @@ export default class CrudManager {
     collection: string;
     id: string;
     fields: any;
-    expand: any[];
-    callback: any;
-    invalidateCache: string[]
+    expand?: string[];
+    invalidateCache?: string[];
   }, token: string) {
-    let hasIssue = await Validate(payload, "update", token, this.cache);
+    const hasIssue = await Validate(payload, "update", token, this.cache);
     if (hasIssue) return hasIssue;
-    try {
 
-      for (var i in payload.fields) {
-        if (payload.fields[i].isFile) {
-          payload.fields[i] = handleFiles(payload.fields[i])[0]
+    try {
+      // Handle files in fields if any
+      for (const key in payload.fields) {
+        if (payload.fields[key]?.isFile) {
+          payload.fields[key] = handleFiles(payload.fields[key])[0];
         }
       }
 
+      // Queue update first (assuming appendToQueue returns a promise) 
       const res = await this.pb.collection(payload.collection).update(payload.id, payload.fields, {
-        ...(payload.expand && {
-          expand: joinExpand(payload.expand, payload.collection, "update"),
-        }),
+        ...(payload.expand && { expand: joinExpand(payload.expand, payload.collection, "update") }),
       });
 
-      if (payload.invalidateCache) {
-        let cacheKeys = this.cache.keys();
-
-        // Create a list of keys to invalidate by checking if any cache key starts with one of the invalidateCache entries
-        let keysToInvalidate = [];
-
-        for (let key of cacheKeys) {
-          for (let prefix of payload.invalidateCache) {
-            if (key.startsWith(prefix)) {
-              keysToInvalidate.push(key);
-              break; // No need to check other prefixes once matched
-            }
-          }
-        }
-
-        for (let key of keysToInvalidate) {
-          this.cache.delete(key);
-          console.log(`Invalidating : ${key}`)
-        }
+      // Invalidate cache keys by prefixes if needed
+      if (payload.invalidateCache && payload.invalidateCache?.length > 0) {
+        this.invalidateCacheByPrefixes(payload.invalidateCache);
       }
-      this.cache.updateAllOccurrences(payload.collection, { id: payload.id, fields: payload.fields });
+
+      // Update all cached entries for this collection and id
+      this.cache.updateAllOccurrences(payload.collection, res);
+
       return { _payload: res, opCode: HttpCodes.OK };
     } catch (error) {
-      console.error("Error updating record", error);
-      return { _payload: null, opCode: ErrorCodes.SYSTEM_ERROR, message: ErrorMessages[ErrorCodes.SYSTEM_ERROR] };
+      console.error("Error updating record:", error);
+      return {
+        _payload: null,
+        opCode: ErrorCodes.SYSTEM_ERROR,
+        message: ErrorMessages[ErrorCodes.SYSTEM_ERROR],
+      };
     }
   }
 }
