@@ -12,62 +12,64 @@ export default class CacheController {
     this.timesVisited = new Map()
   }
 
-  public updateAllOccurrences(collection: string, payload: { id: string; fields: any }) {
-    const keys = this.keys();
+  updateAllOccurrences(collection, payload) {
+  const keys = this.keys();
 
-    for (const key of keys) {
-      let cacheData = this.get(key); 
-      if(!cacheData) return;
-      const CacheData = this.timesVisited.get(cacheData._payload.id)?.cacheType == "six_hour_immediate"
-      // Handle arrays in _payload
-      if (Array.isArray(cacheData?._payload)) {
-        const exists = cacheData._payload.some((item: any) => item.id === payload.id);
-        if (exists) {
+  for (const key of keys) {
+    const cacheData = this.get(key);
+    if (!cacheData) continue;
 
-          cacheData._payload = cacheData._payload.map((item: any) =>
-            item.id === payload.id ? { ...item, ...payload.fields } : item
-          );
-          //@ts-ignore
-          var expirationTime = 0;
-          if (CacheData.incremental > 5) {
-            const minMinutes = 15, maxMinutes = 45;
-            const randomMinutes = Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes;
-            expirationTime = Date.now() + randomMinutes * 60 * 1000;
-          } else if (CacheData.incremental > 0) {
-            const minHours = 1, maxHours = 5;
-            const randomHours = Math.floor(Math.random() * (maxHours - minHours + 1)) + minHours;
-            expirationTime = Date.now() + randomHours * 60 * 60 * 1000;
-          } else {
-            expirationTime = Date.now() + 6 * 60 * 60 * 1000;
-          }
-          this.set(key, cacheData, expirationTime); // Update cache with expanded fields
+    const payloadId = payload?.id;
+    const fields = payload?.fields;
+
+    // Handle array in _payload
+    if (Array.isArray(cacheData?._payload)) {
+      let modified = false;
+      cacheData._payload = cacheData._payload.map((item) => {
+        if (item.id === payloadId) {
+          modified = true;
+          return { ...item, ...fields };
         }
-      }
-      // Handle objects with _payload
-      else if (typeof cacheData === "object" && cacheData !== null) {
+        return item;
+      });
 
-        // Check if _payload exists and matches the id
-        if ("_payload" in cacheData && cacheData._payload.id === payload.id) {
-          cacheData._payload = { ...cacheData._payload, ...payload.fields };
-          this.set(key, cacheData, 60000); // Update cache with expanded fields
-        } else {
-          // check if item is in cache and delete cache for that item
-          const updatedData = this.recursivelyUpdate(cacheData, payload.id, payload.fields, key);
-          if (updatedData !== cacheData) {
-            // delete the cache entry if the id is found
-            this.delete(key);
-            console.log("Cache updated for id:", payload.id);
-          } else {
-            console.log("No matching id found in cache for update:", payload.id);
-            console.log("Cache data:", cacheData);
+      if (modified) {
+        const meta = this.timesVisited.get(payloadId) || { incremental: 0, cacheType: "" };
+        let expirationTime = Date.now() + 6 * 60 * 60 * 1000; // Default: 6 hours
+
+        if (meta.cacheType === "six_hour_immediate") {
+          if (meta.incremental > 5) {
+            expirationTime = Date.now() + (15 + Math.random() * 30) * 60 * 1000; // 15-45 min
+          } else if (meta.incremental > 0) {
+            expirationTime = Date.now() + (1 + Math.random() * 4) * 60 * 60 * 1000; // 1-5 hrs
           }
         }
-      } else {
-        console.log("Cache data is not an object or array:", cacheData);
+
+        this.set(key, cacheData, expirationTime);
+        console.log(`[Cache] Updated array payload for key ${key}`);
+        continue;
       }
     }
 
+    // Handle object _payload
+    if (typeof cacheData === "object" && cacheData !== null) {
+      if ("_payload" in cacheData && cacheData._payload?.id === payloadId) {
+        cacheData._payload = { ...cacheData._payload, ...fields };
+        this.set(key, cacheData, Date.now() + 60000); // Short 1 min cache
+        console.log(`[Cache] Updated object _payload for key ${key}`);
+        continue;
+      }
+
+      // Fallback recursive update
+      const updatedData = this.recursivelyUpdate(cacheData, payloadId, fields);
+      if (JSON.stringify(updatedData) !== JSON.stringify(cacheData)) {
+        this.set(key, updatedData); // overwrite cache with updated version
+        console.log(`[Cache] Recursively updated and set for key ${key}`);
+      }
+    }
   }
+}
+
 
   /**
    * Recursively updates occurrences of `id` within a data structure.
