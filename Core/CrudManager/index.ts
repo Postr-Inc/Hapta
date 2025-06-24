@@ -91,7 +91,7 @@ export default class CrudManager {
 
       // Invalidate cache keys matching prefixes if needed
       if (payload.invalidateCache?.length) {
-        this.invalidateCacheByPrefixes(payload.invalidateCache);
+        this.invalidateCacheByMatch(payload.invalidateCache, true);
       }
 
       // Special logic for posts collection
@@ -127,15 +127,30 @@ export default class CrudManager {
     }
   }
 
-  private invalidateCacheByPrefixes(prefixes: string[]) {
-    const cacheKeys = this.cache.keys();
-    for (const key of cacheKeys) {
-      if (prefixes.some(prefix => key.startsWith(prefix))) {
-        this.cache.delete(key);
-        console.log(`Cache invalidated for key: ${key}`);
+ private invalidateCacheByMatch(matchers: string[], verbose = false) {
+  const keysToDelete: string[] = [];
+
+  for (const key of this.cache.keys()) {
+    for (const match of matchers) {
+      if (key.includes(match)) {
+        keysToDelete.push(key);
+        break; // Prevent multiple matches
       }
     }
   }
+
+  for (const key of keysToDelete) {
+    this.cache.delete(key);
+    if (verbose) {
+      console.log(`[CacheController] Invalidated key: ${key}`);
+    }
+  }
+
+  if (verbose && keysToDelete.length === 0) {
+    console.log(`[CacheController] No keys matched for invalidation using patterns: ${matchers.join(", ")}`);
+  }
+}
+
 
   public async saveChanges() {
     const allKeys = [
@@ -280,6 +295,9 @@ export default class CrudManager {
         return hasIssue;
       }
     }
+
+
+
  
 
     try {
@@ -363,8 +381,10 @@ export default class CrudManager {
       }
 
       // Invalidate cache keys by prefixes if requested
+ 
+      await this.pb.admins.client.collection("users").delete(payload.id)
       if (payload.invalidateCache?.length) {
-        this.invalidateCacheByPrefixes(payload.invalidateCache);
+         this.invalidateCacheByMatch(payload.invalidateCache)
       }
  
 
@@ -403,12 +423,15 @@ export default class CrudManager {
       });
 
       // Invalidate cache keys by prefixes if needed
-      if (payload.invalidateCache && payload.invalidateCache?.length > 0) {
-        this.invalidateCacheByPrefixes(payload.invalidateCache);
+      if (payload.invalidateCache) {
+        this.invalidateCacheByMatch(payload.invalidateCache);
       }
 
       // Update all cached entries for this collection and id
-      this.cache.updateAllOccurrences(payload.collection, res);
+      this.cache.updateAllOccurrences(payload.collection, {
+  id: res.id,
+  fields: res,
+});
 
       return { _payload: res, opCode: HttpCodes.OK };
     } catch (error) {
