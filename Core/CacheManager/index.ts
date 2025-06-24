@@ -3,6 +3,9 @@
  * @class CacheController
  * @description Cache Controller for storing and retrieving data in-memory.
  */
+
+const COMPRESSION_THRESHOLD = 1024; 
+
 export default class CacheController {
   private cache: Map<string, { data: any; ttl: number }>;
   public timesVisited: Map<String, { incremental: number, cacheType: string }>;
@@ -95,7 +98,14 @@ export default class CacheController {
 
 public set(key: string, data: any, expiresAt: number = 0): any {
   const expiry = expiresAt > 0 ? expiresAt : 0; // ✅ don’t add Date.now()
-  this.cache.set(key, { data, ttl: expiry });
+  let storedData = Buffer | any
+  if(JSON.stringify(data).length > COMPRESSION_THRESHOLD){
+   storedData = Buffer.from(JSON.stringify(data))
+   storedData = Bun.gzipSync(storedData)
+  }else{
+    storedData = data
+  }
+  this.cache.set(key, { data: storedData, ttl: expiry });
   return data;
 }
 
@@ -119,19 +129,56 @@ public set(key: string, data: any, expiresAt: number = 0): any {
   public delete(key: string): boolean { 
     return this.cache.delete(key);
   }
+ 
 
-  public get(key: string): any { 
-    const cacheEntry = this.cache.get(key);
-    if (!cacheEntry) return null;
+public set(key: string, data: any, expiresAt: number = 0): any {
+  const expiry = expiresAt > 0 ? expiresAt : 0;
 
-    const now = Date.now();
-    if (cacheEntry.ttl > 0 && cacheEntry.ttl < now) {
+  try {
+    const jsonStr = JSON.stringify(data);
+
+    if (jsonStr.length > COMPRESSION_THRESHOLD) {
+      // Compress JSON string using Bun gzipSync
+      const compressed = Bun.gzipSync(new TextEncoder().encode(jsonStr));
+      // Store compressed Uint8Array with a flag
+      this.cache.set(key, { data: compressed, ttl: expiry, compressed: true });
+    } else {
+      // Store raw data (not compressed)
+      this.cache.set(key, { data, ttl: expiry, compressed: false });
+    }
+  } catch {
+    // On stringify error fallback: store raw data
+    this.cache.set(key, { data, ttl: expiry, compressed: false });
+  }
+
+  return data;
+}
+
+public get(key: string): any {
+  const cacheEntry = this.cache.get(key);
+  if (!cacheEntry) return null;
+
+  const now = Date.now();
+  if (cacheEntry.ttl > 0 && cacheEntry.ttl < now) {
+    this.cache.delete(key);
+    return null;
+  }
+
+  if (cacheEntry.compressed) {
+    try {
+      // Decompress using Bun gunzipSync
+      const decompressed = Bun.gunzipSync(cacheEntry.data);
+      const jsonStr = new TextDecoder().decode(decompressed);
+      return JSON.parse(jsonStr);
+    } catch {
+      // Decompression or parse failed - treat as cache miss
       this.cache.delete(key);
       return null;
     }
-
-    return cacheEntry.data;
   }
+
+  return cacheEntry.data;
+}
 
   public keys(): string[] {
     return Array.from(this.cache.keys());
