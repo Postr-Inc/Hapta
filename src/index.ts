@@ -13,8 +13,8 @@ import { cors } from "hono/cors";
 import { decode, sign, verify } from "hono/jwt";
 import RateLimitHandler from "../Core/RateLimiter";
 import MainDashboard from "../Core/AdminPanel/frontend_panel";
+import { html } from 'hono/html'
 import process from 'process'
-import * as cheerio from 'cheerio'
 import {
   getCookie,
   getSignedCookie,
@@ -41,6 +41,7 @@ import { MessageTypes } from "../Enums/MessageTypes";
 import EmbedEngine from "../Core/EmbedEngine";
 import AdminLogin from "../Core/AdminPanel/frontend_panel/auth/login";
 import { stream } from "hono/streaming";
+import { Tasks } from "../Core/Concurrency/Enums/Tasks.ts";
 const { upgradeWebSocket, websocket } = createBunWebSocket();
 globalThis.listeners = new Map();
 const rateLimites = new Map();
@@ -51,26 +52,26 @@ pb.admins.client.autoCancellation(false);
 pb.autoCancellation(false)
 
 export const _AuthHandler = new AuthHandler(pb);
- 
+
 function isTokenValid(token: string) {
-  if ( 
+  if (
     !token ||
-   !_AuthHandler.tokenStore.has(token) ||
+    !_AuthHandler.tokenStore.has(token) ||
     !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
   ) {
-     return false
+    return false
   }
   return true
 }
 switch (true) {
-  case   !Bun.env.DatabaseURL:
+  case !Bun.env.DatabaseURL:
     console.error({
       message: "Please set the DatabaseURL in your config file",
       status: ErrorCodes.CONFIGURATION_ERROR,
     });
     process.exit(1);
     break;
-  case !Bun.env.AdminEmail ||!Bun.env.AdminPassword:
+  case !Bun.env.AdminEmail || !Bun.env.AdminPassword:
     console.error({
       message:
         "Please set the AdminEmail and AdminPassword in your config file",
@@ -86,14 +87,14 @@ switch (true) {
     });
     process.exit(1);
     break;
-} 
+}
 export {
   neuralNetwork,
   summaryToTarget,
   summaryVocabulary,
   textToVector,
   vocabulary,
-}; 
+};
 try {
   await pb.admins.authWithPassword(
     Bun.env.AdminEmail,
@@ -123,29 +124,27 @@ const parseCookies = (cookie: string) => {
 
 const limiter =
   config.hasOwnProperty('ratelimit') && config.ratelimit.isEnabled
-    ?    rateLimiter({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    limit: 500, // 100 requests per window
-    standardHeaders: "draft-6", // "RateLimit-*" headers
-    keyGenerator: (c) => {
-      // Use IP address or fallback
-      return (
-        c.req.header("x-forwarded-for") ||
-        c.req.raw.headers.get("cf-connecting-ip") || // for Cloudflare
-        c.req.raw.headers.get("x-real-ip") ||
-        "anon"
-      );
-    },
-    message: "Rate limit exceeded. Please try again later.",
-  })
+    ? rateLimiter({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      limit: 500, // 100 requests per window
+      standardHeaders: "draft-6", // "RateLimit-*" headers
+      keyGenerator: (c) => {
+        // Use IP address or fallback
+        return (
+          c.req.header("x-forwarded-for") ||
+          c.req.raw.headers.get("cf-connecting-ip") || // for Cloudflare
+          c.req.raw.headers.get("x-real-ip") ||
+          "anon"
+        );
+      },
+      message: "Rate limit exceeded. Please try again later.",
+    })
     : null
  
+
 if (limiter) {
   app.use('*', async (c, next) => {
-    const path = c.req.path;
-    
-  
-    // Otherwise apply rate limit
+    const path = c.req.path; 
     return limiter(c, next);
   });
 }
@@ -184,128 +183,162 @@ app.get("/", (c) => {
   return c.json({ status: HttpCodes.OK, message: "Server is running" });
 });
 
-app.get("*", (c, next) => {
-  // if route is embed.postlyapp.com
-  let host = c.req.header("host");
+app.get("*", async (c, next) => {
+  const host = c.req.header("host");
+  const url = new URL(c.req.url, `http://${host}`).pathname;
+
+  // Handle embed subdomain immediately
   if (host === "embed.postlyapp.com") {
     c.status(200);
     return c.json({ message: "Embed Server is running" });
   }
 
-  // get token from cookie
-  let token = getCookie(c, "Authorization") || c.req.header("Authorization");
-  var decoded;
+  // Extract token
+  const token = getCookie(c, "Authorization") || c.req.header("Authorization");
 
-  if (token) decoded = decode(token);
+  // Rate limit per IP
+  const ip = c.req.header("CF-Connecting-IP");
 
-  // check if ip is rate limited
-
-
-  let ip = c.req.header("CF-Connecting-IP");
-
-  // check if request is from a web socket
   if (c.req.header("Upgrade") === "websocket") {
-    // skip next if the request is a web socket
+    return next(); // Skip checks for websockets
+  }
+
+
+
+  // Public routes that do NOT require token validation
+  const publicPaths = [
+    "/auth/register",
+    "/auth/verify",
+    "/auth/refreshtoken",
+    "/auth/requestPasswordReset",
+    "/auth/resetPassword",
+    "/auth/get-basic-auth-token",
+    "/auth/login",
+    "/opengraph/embed",
+  ];
+
+  const isPublicPath =
+    publicPaths.includes(url) ||
+    url.includes("/embed") ||
+    url.startsWith("/api/files") ||
+    url.includes("/realtime") === false &&
+    host?.startsWith("embed") === false &&
+    url.includes("/admin") === false;
+
+  // Skip token validation if it's a public route
+  if (isPublicPath) {
     return next();
   }
 
-  if (!rt.has(ip)) {
-    rt.setRateLimit(ip);
-  }
-  if (config.ratelimit.isEnabled) {
-    console.log("ratelimit enabled")
-    if (!rt.checkRateLimit(ip)) { 
-      c.status(ErrorCodes.RATE_LIMIT);
-      return c.json({
-        status: ErrorCodes.RATE_LIMIT,
-        message: ErrorMessages[ErrorCodes.RATE_LIMIT],
-      });
+  // Token validation for private routes
+  let decoded;
+  try {
+    if (token) {
+      decoded = decode(token);
     }
+  } catch (err) {
+    console.warn("Invalid JWT:", err);
+    decoded = null;
   }
-  // make sure ip matches the one in the token
-  let tokenIp = _AuthHandler.ipStore.get(token);
+
+  const tokenIp = _AuthHandler.ipStore.get(token);
+
+  // Block if IP does not match token IP for basic tokens
+  if (decoded?.payload?.isBasicToken && tokenIp !== ip) {
+    c.status(ErrorCodes.UNNAUTHORIZED_IP);
+    return c.json({
+      status: ErrorCodes.UNNAUTHORIZED_IP,
+      message: ErrorMessages[ErrorCodes.UNNAUTHORIZED_IP],
+    });
+  }
+
+  // Block specific basicToken routes
   if (
-    c.req.url !== "/auth/register" &&
-    c.req.url !== "/auth/verify" &&
-    c.req.url !== "/auth/refreshtoken" &&
-    c.req.url !== "/auth/requestPasswordReset" &&
-    c.req.url !== "/auth/resetPassword" &&
-    c.req.url.includes("/embed") == false &&
-    c.req.url.includes("/opengraph/embed") == false &&
-    c.req.url !== "/auth/get-basic-auth-token" &&
-    c.req.url !== "/auth/login" &&
-    c.req.url.includes("/api/files") == false &&
-    c.req.url.includes("/admin") == false &&
-    host?.startsWith("embed") == false &&
-    c.req.url.includes("/realtime") == false
+    decoded?.payload?.isBasicToken &&
+    (
+      url.includes("/action/posts/") ||
+      url.includes("/action/users") ||
+      url.includes("/action/comments/")
+    )
   ) {
-    if (tokenIp !== ip && decoded.payload && decoded?.payload.isBasicToken) {
-      c.status(ErrorCodes.UNNAUTHORIZED_IP);
-      return c.json({
-        status: ErrorCodes.UNNAUTHORIZED_IP,
-        message: ErrorMessages[ErrorCodes.UNNAUTHORIZED_IP],
-      });
-    }
-    if (
-      decoded?.payload && decoded.payload.isBasicToken ||
-      token &&
-      _AuthHandler.tokenStore.has(token) &&
-      verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
-    ) { 
-      if(decoded?.payload.isBasicToken && c.req.url.includes("/action/posts/")|| 
-        decoded?.payload.isBasicToken && c.req.url.includes("/action/users")
-        || decoded?.payload.isBasicToken && c.req.url.includes("/action/comments/")
-      ){
-        c.status(ErrorCodes.UNAUTHORIZED_REQUEST);
-        return c.json({
-           status: ErrorCodes.UNAUTHORIZED_REQUEST,
-            message: ErrorMessages[ErrorCodes.UNAUTHORIZED_REQUEST],
-          });
-      }
-      c.status(HttpCodes.OK);
-      return next();
-    } else { 
-      c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
-      return c.json({
-        status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
-        message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
-      });
-    }
+    c.status(ErrorCodes.UNAUTHORIZED_REQUEST);
+    return c.json({
+      status: ErrorCodes.UNAUTHORIZED_REQUEST,
+      message: ErrorMessages[ErrorCodes.UNAUTHORIZED_REQUEST],
+    });
   }
-  return next();
+
+  // Validate token signature
+  if (
+    token &&
+    _AuthHandler.tokenStore.has(token) &&
+    verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
+  ) {
+    return next(); // Token valid, allow through
+  }
+
+  // Token is missing or invalid
+  c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
+  return c.json({
+    status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
+    message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
+  });
 });
 
-app.get('/opengraph/embed', async (c) => {
-  const url = c.req.query('url')
 
-  if (!url) {
-    return c.json({ error: 'Missing URL' }, 400)
-  }
+app.get('/opengraph/embed', async (c) => {
+  const url = c.req.query('url');
+  if (!url) return c.json({ error: 'Missing URL' }, 400);
+
+  const cached = cache.get(url);
+  if (cached) return c.json(cached);
 
   try {
-    const response = await fetch(url)
-    const text = await response.text()
-
-    const $ = cheerio.load(text)
-
-    const getMeta = (name: string) =>
-      $(`meta[property="${name}"]`).attr('content') ||
-      $(`meta[name="${name}"]`).attr('content') ||
-      null
-
+    const res = await fetch(url);
     const metadata = {
-      title: getMeta('og:title') || $('title').text(),
-      description: getMeta('og:description') || '',
-      image: getMeta('og:image') || '',
+      title: '',
+      description: '',
+      image: '',
       url,
-    }
+    };
 
-    return c.json(metadata)
+    const rewriter = new HTMLRewriter()
+      .on('title', {
+        text(text) {
+          if (!metadata.title) metadata.title = text.text.trim();
+        },
+      })
+      .on('meta', {
+        element(el) {
+          const prop = el.getAttribute('property') || el.getAttribute('name');
+          const content = el.getAttribute('content');
+
+          switch (prop) {
+            case 'og:title':
+              metadata.title ||= content || '';
+              break;
+            case 'og:description':
+              metadata.description ||= content || '';
+              break;
+            case 'og:image':
+              metadata.image ||= content || '';
+              break;
+          }
+        },
+      });
+
+    const rewritten = rewriter.transform(res);
+    await rewritten.text(); // triggers rewriter
+
+    cache.set(url, metadata, 172800); // 2 days
+    return c.json(metadata);
   } catch (err) {
-    console.error('Failed to fetch OG metadata:', err)
-    return c.json({ error: 'Failed to fetch metadata' }, 500)
+    console.error('Failed to fetch OG metadata:', err);
+    return c.json({ error: 'Failed to fetch metadata' }, 500);
   }
-})
+});
+
+
 app.get(
   "/subscriptions",
   upgradeWebSocket((c) => {
@@ -333,8 +366,8 @@ app.get(
             case MessageTypes.AUTH_ROLL_TOKEN:
               // check if the user is authorized to roll a new token
               let tokenData = decode(security.token) as any;
-              let userID = tokenData.payload.id; 
-              let newToken = await _AuthHandler.rollNewToken(security.token, tokenData) 
+              let userID = tokenData.payload.id;
+              let newToken = await _AuthHandler.rollNewToken(security.token, tokenData)
               if (!newToken) {
                 ws.send(
                   JSON.stringify({
@@ -410,37 +443,41 @@ app.get("/health", (c) => {
 });
 
 app.get("/api/files/:collection/:id/:file", async (c) => {
-  let { collection, id, file } = c.req.param();
-  if (!collection || !id || !file)
+  const { collection, id, file } = c.req.param();
+
+  if (!collection || !id || !file) {
     return c.json(
       { error: true, message: ErrorMessages[ErrorCodes.NOT_FOUND] },
       { status: ErrorCodes.NOT_FOUND }
     );
+  }
+
   const u = `${pb.baseUrl}/api/files/${collection}/${id}/${file}`;
   const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(file);
   const isVideo = /\.(mp4|webm|ogg|mov|avi|mkv)$/i.test(file);
 
+  // Cache headers for all file types
+  c.header("Cache-Control", "public, max-age=31536000");
+  c.header("Expires", new Date(Date.now() + 31536000000).toUTCString());
+
+  // ✅ Serve cached image if available
   if (isImage && imageCache.has(u)) {
     return imageCache.get(u);
   }
 
-  c.header("Cache-Control", "public, max-age=31536000");
-  c.header("Expires", new Date(Date.now() + 31536000000).toUTCString());
-
+  // ✅ Handle video streaming with Range headers
   if (isVideo) {
-    // Handle video streaming with range requests
     const range = c.req.header("range");
     const videoRes = await fetch(u, {
       headers: range ? { Range: range } : {},
     });
 
-    // Set headers for partial content if range requested
     c.status(videoRes.status);
     for (const [key, value] of videoRes.headers.entries()) {
       c.header(key, value);
     }
 
-    // If the response is not partial content, set appropriate headers
+    // If range was requested but server sent full file, fix status and headers
     if (videoRes.status === 200 && range) {
       c.status(206);
       c.header("Accept-Ranges", "bytes");
@@ -450,38 +487,51 @@ app.get("/api/files/:collection/:id/:file", async (c) => {
       if (contentType) c.header("Content-Type", contentType);
     }
 
-    // Return the video stream directly
-    return stream(c, async (stream) => {
+    return stream(c, async (streamWriter) => {
       if (!videoRes.body) return;
       const reader = videoRes.body.getReader();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (value) await stream.write(value);
+        if (value) await streamWriter.write(value);
       }
     });
   }
 
-  // Default: proxy and cache images/other files
+  // ✅ Handle image or other files
   const res = await fetch(u, { cache: "force-cache" });
+
+  // ✅ Cache and serve image
   if (isImage && res.ok) {
     const blob = await res.blob();
-    imageCache.set(u, new Response(blob, {
+    const imageResponse = new Response(blob, {
       headers: {
         "Content-Type": res.headers.get("Content-Type") || "",
         "Cache-Control": "public, max-age=31536000",
         "Expires": new Date(Date.now() + 31536000000).toUTCString(),
       },
-    }));
-    return imageCache.get(u);
+    });
+    imageCache.set(u, imageResponse);
+    return imageResponse;
   }
-  // For non-image, non-video files, just proxy the response
+
+  // ✅ Proxy non-image, non-video files
   c.status(res.status);
   for (const [key, value] of res.headers.entries()) {
     c.header(key, value);
   }
-  return res.body;
+
+  return stream(c, async (streamWriter) => {
+    if (!res.body) return;
+    const reader = res.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) await streamWriter.write(value);
+    }
+  });
 });
+
 
 app.post("/auth/resetPassword", async (c) => {
   let { resetToken, password } = (await c.req.json()) as any;
@@ -536,7 +586,7 @@ app.post("/auth/login", async (c) => {
   );
 });
 
-const rqHandler = new RequestHandler();
+export const rqHandler = new RequestHandler();
 
 app.post("/auth/get-basic-auth-token", async (c) => {
   let sig = config.Security.Secret + crypto.randomUUID()
@@ -568,20 +618,46 @@ app.post("/deepsearch", async (c) => {
   return c.json(d);
 });
 
+
 app.post("/collection/:collection", async (c) => {
-  let { collection } = c.req.param();
-  let { type, payload, security, callback } = (await c.req.json()) as any;
+  const { collection } = c.req.param();
+
+  let type, payload, security, callback;
+
+  const contentType = c.req.header("Content-Type") || "";
+  if (contentType.includes("multipart/form-data")) {
+    const form = await c.req.formData();
+
+    type = form.get("type")?.toString();
+    callback = form.get("callback")?.toString();
+
+    payload = {};
+    for (const [key, value] of form.entries()) {
+      if (["type", "security", "callback"].includes(key)) continue;
+
+      if (value instanceof File) {
+        if (!payload.files) payload.files = [];
+        payload.files.push(value);
+      } else {
+        try {
+          payload[key] = JSON.parse(value.toString());
+        } catch {
+          payload[key] = value.toString();
+        }
+      }
+    }
+  } else {
+    const body = await c.req.json();
+    ({ type, payload, security, callback } = body);
+  }
 
   const token = c.req.header("Authorization") || security?.token;
-  c.req.header("Content-Type", "application/json");
-  c.req.header("Accept", "application/json");
-  c.req.header("Acess-Control-Allow-Origin", "*");
-  var decodedToken = decode(token)
+
+  // Only proceed if token is present and valid
   if (
-    !decodedToken.payload.isBasicToken &&
     !token ||
-    !decodedToken.payload.isBasicToken && !_AuthHandler.tokenStore.has(token) ||
-    !decodedToken.payload.isBasicToken && !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
+    !_AuthHandler.tokenStore.has(token) ||
+    !verify(token, _AuthHandler.tokenStore.get(token) as string, "HS256")
   ) {
     c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
     return c.json({
@@ -589,11 +665,17 @@ app.post("/collection/:collection", async (c) => {
       message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
     });
   }
-  payload.collection = collection
-  let d = await rqHandler.handleMessage({ type, payload, callback }, token);
+
+
+  payload.collection = collection;
+
+  const d = await rqHandler.handleMessage({ type, payload, callback }, token);
+
   c.status(d.opCode);
   return c.json(d);
 });
+
+
 
 
 app.post("/actions/:type/:action_type", async (c) => {
@@ -645,11 +727,11 @@ app.post("/actions/:type/:action_type", async (c) => {
           throw new Error("Invalid action");
         }
 
-        await Promise.all([
+        let res = await Promise.all([
           rqHandler.crudManager.update({
             collection: "users",
             id: currentUserId,
-            fields: { following: currentUser._payload.following },
+            fieldlets: { following: currentUser._payload.following },
             invalidateCache: [`/u/${currentUser._payload.username}`],
           }, token),
           rqHandler.crudManager.update({
@@ -659,12 +741,12 @@ app.post("/actions/:type/:action_type", async (c) => {
             invalidateCache: [`/u/${targetUser._payload.username}`],
           }, token),
         ]);
+
         break;
       }
 
       case "posts":
       case "comments": {
-        console.log(targetId)
         const collection = type;
         const doc = await rqHandler.crudManager.get({
           collection,
@@ -694,7 +776,9 @@ app.post("/actions/:type/:action_type", async (c) => {
           fields: {
             likes: doc._payload.likes ?? likes,
           },
-          invalidateCache: [`/${collection === "posts" ? "p" : "c"}/${doc._payload.id}`],
+          invalidateCache: [`/${collection === "posts" ? "posts" : "comments"}_${doc._payload.id}`,
+          `${collection}_recommended_feed_${currentUserId}`,
+          ],
         }, token);
 
         return c.json({ status: 200, message: "Action completed.", res: res._payload });
@@ -710,6 +794,7 @@ app.post("/actions/:type/:action_type", async (c) => {
     return c.json({ status: 200, message: "Action completed." });
 
   } catch (err: any) {
+    console.log(err)
     return c.json({
       status: ErrorCodes.SYSTEM_ERROR,
       message: err.message || "An error occurred",
@@ -720,10 +805,27 @@ app.post("/actions/:type/:action_type", async (c) => {
 
 
 
+app.delete("/auth/delete", async (c) => {
+  try {
+    let decodedToken = decode(c.req.header("Authorization"))
+
+    let id = decodedToken.payload.id
+    let username = decodedToken.payload.username
+
+
+    await rqHandler.crudManager.delete({ collection: "users", id, invalidateCache: [`u/${username}`, `posts_${id}`] }, c.req.header("Authorization"))
+    return c.json({ status: HttpCodes.OK, message: "deleted user account successfuly" })
+
+  } catch (error) {
+    console.log(error)
+    return c.json({ status: ErrorCodes.INTERNAL_SERVER_ERROR, message: "issue deleting account" })
+  }
+})
+
+
 app.post("/auth/check", async (c) => {
   let { email, username } = (await c.req.json()) as any;
   if (!email && !username) {
-    console.log("Missing email or username");
     return c.json({
       status: ErrorCodes.MISSING_EMAIL,
       message: ErrorMessages[ErrorCodes.MISSING_EMAIL],
@@ -767,26 +869,7 @@ app.get("/auth/verify", async (c) => {
   }
 });
 
-app.delete('/auth/delete-account', async (c) => {
-  const token = c.req.header("Authorization")
-  const decoded = decode(token)
-  if (
-    !token ||
-    !_AuthHandler.tokenStore.has(token) ||
-    !(await verify(
-      token,
-      _AuthHandler.tokenStore.get(token) as string,
-      "HS256"
-    )) ||
-    _AuthHandler.ipStore.get(token) !== c.req.header("CF-Connecting-IP")
-  ) {
-    c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
-    return c.json({
-      status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
-      message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
-    });
-  }
-})
+ 
 app.post("/auth/refreshtoken", async (c) => {
   let { token } = (await c.req.json()) as any;
   if (
