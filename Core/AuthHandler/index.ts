@@ -10,6 +10,7 @@ export default class AuthHandler{
      tokenStore: Map<string, string>
      ipStore: Map<string, string>
      adminTokenStore: Map<string, string>
+     userStore: Map<string, string>
      constructor(
         pb: Pocketbase
      ) {
@@ -18,6 +19,7 @@ export default class AuthHandler{
         this.tokenStore = new Map()
         this.ipStore = new Map()
         this.adminTokenStore = new Map()
+        this.userStore = new Map()
      }
 
      public async rollNewToken(oldToken: string, data: any, isBasicToken?: boolean){
@@ -53,8 +55,7 @@ export default class AuthHandler{
      }
      public async requestPasswordReset(email: string, hono: any){
         try {
-            let out =  await this.pb.collection('users').requestPasswordReset(email)
-            console.log(out)
+              await this.pb.collection('users').requestPasswordReset(email) 
             return hono.json({
                 status: HttpCodes.OK,
                 message: 'Password Reset Request Sent'
@@ -67,14 +68,18 @@ export default class AuthHandler{
             })
         }
      }
-     public async register(email: string, password: string,  username: string, dob: string, hono: any){
+     public async register(data: any, hono: any){
         try {
+            if(data.followers || data.following){
+                hono.status(ErrorCodes.UNAUTHORIZED_REQUEST)
+                return hono.json({
+                    status: ErrorCodes.UNAUTHORIZED_REQUEST,
+                    message: "Cannot inject followers or following into user created record!"
+                })
+            }
             let user = await this.pb.collection('users').create({
-                email,
-                password,
-                passwordConfirm: password,
-                username,
-                dob,
+                ...data,
+                passwordConfirm:data.password,
                 ActiveDevices: []
             }) as any;
             return hono.json({
@@ -83,6 +88,7 @@ export default class AuthHandler{
                 data: user.record
             })
         } catch (error) {
+            console.log(error)
             hono.status(ErrorCodes.INTERNAL_SERVER_ERROR)
             return hono.json({
                 status: ErrorCodes.INTERNAL_SERVER_ERROR,
@@ -146,16 +152,17 @@ export default class AuthHandler{
 
             const payload = {
                 id: user.record.id,
+                username: user.record.username,
+                created: user.record.created, 
                 exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
             }
-
-            console.log(config)
+ 
 
             let token = await sign(payload, config.Security.Secret + password , "HS256") as string;
             
             this.SuccessFulLogins.set(user.record.id, ipAddress +"-"+ token)
             // remove last token with same ip
-            let lastToken = this.SuccessFulLogins.get(user.record.id)
+            let lastToken = this.SuccessFulLogins.get(user.record.id) 
             if(lastToken){
                 this.tokenStore.delete(lastToken.split('-')[1])
                 this.ipStore.delete(lastToken.split('-')[1])
