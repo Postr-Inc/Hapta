@@ -678,6 +678,7 @@ app.post("/collection/:collection", async (c) => {
 
 
 
+v
 app.post("/actions/:type/:action_type", async (c) => {
   const { type, action_type } = c.req.param();
   const { targetId } = await c.req.json(); // generic target ID (post, user, or comment)
@@ -733,13 +734,13 @@ app.post("/actions/:type/:action_type", async (c) => {
             id: currentUserId,
             fieldlets: { following: currentUser._payload.following },
             invalidateCache: [`/u/${currentUser._payload.username}`],
-          }, token),
+          }, token, true),
           rqHandler.crudManager.update({
             collection: "users",
             id: targetId,
             fields: { followers: targetUser._payload.followers },
             invalidateCache: [`/u/${targetUser._payload.username}`],
-          }, token),
+          }, token, true),
         ]);
 
         break;
@@ -762,24 +763,43 @@ app.post("/actions/:type/:action_type", async (c) => {
 
         const likes = doc._payload.likes ?? [];
 
+        // Ensure bookmarked is always an array
+        if (!Array.isArray(doc._payload.bookmarked)) {
+          doc._payload.bookmarked = [];
+        }
+        const bookmarks = doc._payload.bookmarked;
+
         if (action_type === "like") {
           if (!likes.includes(currentUserId)) likes.push(currentUserId);
         } else if (action_type === "unlike") {
           doc._payload.likes = likes.filter((id) => id !== currentUserId);
+        } else if (action_type === "bookmark") {
+          // Always add the user to bookmarks if not present, remove if present (toggle)
+          if (!bookmarks.includes(currentUserId)) {
+             bookmarks.push(currentUserId);
+          } else {
+            doc._payload.bookmarked = bookmarks.filter((id) => id !== currentUserId);
+          }
         } else {
           throw new Error("Invalid action");
+        }
+
+        const fields: Record<string, any> = {};
+        if (action_type === "bookmark") {
+          fields.bookmarked = doc._payload.bookmarked ?? bookmarks;
+        }
+        if (action_type === "like" || action_type === "unlike") {
+          fields.likes = doc._payload.likes ?? likes;
         }
 
         const res = await rqHandler.crudManager.update({
           collection,
           id: targetId,
-          fields: {
-            likes: doc._payload.likes ?? likes,
-          },
+          fields,
           invalidateCache: [`/${collection === "posts" ? "posts" : "comments"}_${doc._payload.id}`,
           `${collection}_recommended_feed_${currentUserId}`,
           ],
-        }, token);
+        }, token, true);
 
         return c.json({ status: 200, message: "Action completed.", res: res._payload });
       }
@@ -801,6 +821,7 @@ app.post("/actions/:type/:action_type", async (c) => {
     }, ErrorCodes.SYSTEM_ERROR);
   }
 });
+
 
 
 
