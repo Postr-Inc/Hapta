@@ -5,7 +5,7 @@ import { createBunWebSocket, getConnInfo } from "hono/bun";
 import Pocketbase from "pocketbase";
 import config from "../config"
 import { webSocketLimiter } from "hono-rate-limiter";
-import crypto from 'crypto'
+
 import { rateLimiter } from "hono-rate-limiter";
 import { bearerAuth } from "hono/bearer-auth";
 import { HTTPException } from "hono/http-exception";
@@ -141,10 +141,13 @@ const limiter =
     })
     : null
  
-
 if (limiter) {
   app.use('*', async (c, next) => {
-    const path = c.req.path; 
+    const path = c.req.path;
+
+   
+
+    // Otherwise apply rate limit
     return limiter(c, next);
   });
 }
@@ -177,7 +180,6 @@ app.use(
   })
 );
 
-const rt = new RateLimitHandler();
 
 app.get("/", (c) => {
   return c.json({ status: HttpCodes.OK, message: "Server is running" });
@@ -410,12 +412,15 @@ app.get(
 );
 
 app.options("*", (c) => {
+  // Essential CORS headers for iOS video playback
   c.header("Access-Control-Allow-Origin", "*");
-  c.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE");
+  c.header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
   c.header(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, user-agent"
+    "Range, Origin, Accept, Content-Type, Authorization"
   );
+  c.header("Access-Control-Expose-Headers", "Content-Length, Content-Range");
+  c.header("Access-Control-Max-Age", "86400"); // Cache preflight for 24 hours
   return c.text("", 204);
 });
 
@@ -441,96 +446,110 @@ app.get("/embed/:collection/:id/:type", async (c) => {
 app.get("/health", (c) => {
   return c.json({ status: HttpCodes.OK, message: "Server is running" });
 });
-
+app.options("/api/files/:collection/:id/:file", (c) => {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+      "Access-Control-Allow-Headers": "Range, Content-Type",
+      "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
+      "Access-Control-Max-Age": "86400",
+      Vary: "Origin, Accept-Encoding"
+    }
+  });
+});
 app.get("/api/files/:collection/:id/:file", async (c) => {
   const { collection, id, file } = c.req.param();
-
   if (!collection || !id || !file) {
-    return c.json(
-      { error: true, message: ErrorMessages[ErrorCodes.NOT_FOUND] },
-      { status: ErrorCodes.NOT_FOUND }
-    );
+    return c.json({ error: true, message: "File not found" }, 404);
   }
 
-  const u = `${pb.baseUrl}/api/files/${collection}/${id}/${file}`;
-  const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(file);
+  const fileUrl = `${pb.baseUrl}/api/files/${collection}/${id}/${file}`;
   const isVideo = /\.(mp4|webm|ogg|mov|avi|mkv)$/i.test(file);
 
-  // Cache headers for all file types
-  c.header("Cache-Control", "public, max-age=31536000");
-  c.header("Expires", new Date(Date.now() + 31536000000).toUTCString());
+  const rangeHeader = c.req.header("Range");
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
+    "Accept-Ranges": "bytes",
+    "Vary": "Origin, Accept-Encoding"
+  };
 
-  // ✅ Serve cached image if available
-  if (isImage && imageCache.has(u)) {
-    return imageCache.get(u);
-  }
-
-  // ✅ Handle video streaming with Range headers
-  if (isVideo) {
-    const range = c.req.header("range");
-    const videoRes = await fetch(u, {
-      headers: range ? { Range: range } : {},
-    });
-
-    c.status(videoRes.status);
-    for (const [key, value] of videoRes.headers.entries()) {
-      c.header(key, value);
-    }
-
-    // If range was requested but server sent full file, fix status and headers
-    if (videoRes.status === 200 && range) {
-      c.status(206);
-      c.header("Accept-Ranges", "bytes");
-      const contentLength = videoRes.headers.get("Content-Length");
-      if (contentLength) c.header("Content-Length", contentLength);
-      const contentType = videoRes.headers.get("Content-Type");
-      if (contentType) c.header("Content-Type", contentType);
-    }
-
-    return stream(c, async (streamWriter) => {
-      if (!videoRes.body) return;
-      const reader = videoRes.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) await streamWriter.write(value);
+  // HEAD request support (for iOS compatibility)
+  if (c.req.method === "HEAD") {
+    const headRes = await fetch(fileUrl, { method: "HEAD" });
+    return new Response(null, {
+      headers: {
+        ...Object.fromEntries(headRes.headers.entries()),
+        ...corsHeaders
       }
     });
   }
 
-  // ✅ Handle image or other files
-  const res = await fetch(u, { cache: "force-cache" });
+  // Handle Range (partial) video requests
+  if (isVideo && rangeHeader) {
+    const headRes = await fetch(fileUrl, { method: "HEAD" });
+    const totalSize = parseInt(headRes.headers.get("content-length") || "0", 10);
+    if (!totalSize) return c.json({ error: "File size unavailable" }, 500);
 
-  // ✅ Cache and serve image
-  if (isImage && res.ok) {
-    const blob = await res.blob();
-    const imageResponse = new Response(blob, {
-      headers: {
-        "Content-Type": res.headers.get("Content-Type") || "",
-        "Cache-Control": "public, max-age=31536000",
-        "Expires": new Date(Date.now() + 31536000000).toUTCString(),
-      },
-    });
-    imageCache.set(u, imageResponse);
-    return imageResponse;
-  }
+    const [startStr, endStr] = rangeHeader.replace(/bytes=/, "").split("-");
+    const start = parseInt(startStr, 10);
+    const end = endStr ? parseInt(endStr, 10) : totalSize - 1;
 
-  // ✅ Proxy non-image, non-video files
-  c.status(res.status);
-  for (const [key, value] of res.headers.entries()) {
-    c.header(key, value);
-  }
-
-  return stream(c, async (streamWriter) => {
-    if (!res.body) return;
-    const reader = res.body.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) await streamWriter.write(value);
+    if (isNaN(start) || isNaN(end) || start >= totalSize || end >= totalSize) {
+      return c.json({ error: "Invalid range" }, 416);
     }
+
+    const length = end - start + 1;
+
+    const fileRes = await fetch(fileUrl, {
+      headers: {
+        Range: `bytes=${start}-${end}`
+      }
+    });
+
+    if (!fileRes.ok || !fileRes.body) {
+      return c.json({ error: "Failed to fetch file slice" }, 500);
+    }
+
+    const headers = {
+      ...corsHeaders,
+      "Content-Type": "video/mp4",
+      "Content-Range": `bytes ${start}-${end}/${totalSize}`,
+      "Content-Length": length.toString(),
+      "Cache-Control": "no-cache" // ⭐ disables Cloudflare cache for this response
+    };
+
+    return new Response(fileRes.body, {
+      status: 206,
+      headers
+    });
+  }
+
+  // Fallback full file response (for non-Range requests)
+  const fileRes = await fetch(fileUrl);
+  if (!fileRes.ok || !fileRes.body) {
+    return c.json({ error: true, message: "File not found" }, 404);
+  }
+
+  const headers = new Headers(fileRes.headers);
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
+
+  return new Response(fileRes.body, {
+    status: fileRes.status,
+    headers
   });
 });
+
+
+
+
+
+
+
 
 
 app.post("/auth/resetPassword", async (c) => {
@@ -678,13 +697,12 @@ app.post("/collection/:collection", async (c) => {
 
 
 
-v
-app.post("/actions/:type/:action_type", async (c) => {
+ app.post("/actions/:type/:action_type", async (c) => {
   const { type, action_type } = c.req.param();
-  const { targetId } = await c.req.json(); // generic target ID (post, user, or comment)
+  const { targetId } = await c.req.json(); // ID of post/user/comment
   const token = c.req.header("Authorization");
 
-  // 🔐 Token validation
+  // 🔒 Validate token
   if (!token) {
     return c.json({
       status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
@@ -707,8 +725,18 @@ app.post("/actions/:type/:action_type", async (c) => {
 
   const currentUserId = decodedToken.payload.id;
 
+  if (!currentUserId || isBasicToken) {
+    return c.json({
+      status: ErrorCodes.INVALID_REQUEST,
+      message: ErrorMessages[ErrorCodes.INVALID_REQUEST],
+    }, ErrorCodes.INVALID_REQUEST);
+  }
+
   try {
     switch (type) {
+      // ----------------------------
+      // ✅ USER FOLLOW / UNFOLLOW
+      // ----------------------------
       case "users": {
         const [targetUser, currentUser] = await Promise.all([
           rqHandler.crudManager.get({ collection: "users", id: targetId }, token),
@@ -719,16 +747,20 @@ app.post("/actions/:type/:action_type", async (c) => {
         const currentFollowing = currentUser._payload.following ?? [];
 
         if (action_type === "follow") {
-          if (!targetFollowers.includes(currentUserId)) targetFollowers.push(currentUserId);
-          if (!currentFollowing.includes(targetId)) currentFollowing.push(targetId);
+          if (!targetFollowers.includes(currentUserId)) {
+            targetFollowers.push(currentUserId);
+          }
+          if (!currentFollowing.includes(targetId)) {
+            currentFollowing.push(targetId);
+          }
         } else if (action_type === "unfollow") {
-          targetUser._payload.followers = targetFollowers.filter((id) => id !== currentUserId);
-          currentUser._payload.following = currentFollowing.filter((id) => id !== targetId);
+          targetUser._payload.followers = targetFollowers.filter(id => id !== currentUserId);
+          currentUser._payload.following = currentFollowing.filter(id => id !== targetId);
         } else {
-          throw new Error("Invalid action");
+          throw new Error("Invalid user action");
         }
 
-        let res = await Promise.all([
+        await Promise.all([
           rqHandler.crudManager.update({
             collection: "users",
             id: currentUserId,
@@ -746,6 +778,9 @@ app.post("/actions/:type/:action_type", async (c) => {
         break;
       }
 
+      // ----------------------------
+      // ✅ POSTS OR COMMENTS LIKE/BOOKMARK
+      // ----------------------------
       case "posts":
       case "comments": {
         const collection = type;
@@ -762,48 +797,53 @@ app.post("/actions/:type/:action_type", async (c) => {
         }
 
         const likes = doc._payload.likes ?? [];
+        let bookmarks = Array.isArray(doc._payload.bookmarked) ? doc._payload.bookmarked : [];
 
-        // Ensure bookmarked is always an array
-        if (!Array.isArray(doc._payload.bookmarked)) {
-          doc._payload.bookmarked = [];
-        }
-        const bookmarks = doc._payload.bookmarked;
+        // Always initialize update fields
+        const fields: Record<string, any> = {};
 
         if (action_type === "like") {
-          if (!likes.includes(currentUserId)) likes.push(currentUserId);
-        } else if (action_type === "unlike") {
-          doc._payload.likes = likes.filter((id) => id !== currentUserId);
-        } else if (action_type === "bookmark") {
-          // Always add the user to bookmarks if not present, remove if present (toggle)
-          if (!bookmarks.includes(currentUserId)) {
-             bookmarks.push(currentUserId);
-          } else {
-            doc._payload.bookmarked = bookmarks.filter((id) => id !== currentUserId);
+          if (!likes.includes(currentUserId)) {
+            likes.push(currentUserId);
           }
+          doc._payload.likes = likes;
+          fields.likes = likes;
+        } else if (action_type === "unlike") {
+          doc._payload.likes = likes.filter(id => id !== currentUserId);
+          fields.likes = doc._payload.likes;
+        } else if (action_type === "bookmark") {
+          if (!bookmarks.includes(currentUserId)) {
+              bookmarks.push(currentUserId);
+          } else {
+              bookmarks = bookmarks.filter(id => id !== currentUserId);
+          }
+          doc._payload.bookmarked = bookmarks;
+          fields.bookmarked = bookmarks;
         } else {
-          throw new Error("Invalid action");
-        }
-
-        const fields: Record<string, any> = {};
-        if (action_type === "bookmark") {
-          fields.bookmarked = doc._payload.bookmarked ?? bookmarks;
-        }
-        if (action_type === "like" || action_type === "unlike") {
-          fields.likes = doc._payload.likes ?? likes;
+          throw new Error("Invalid post/comment action");
         }
 
         const res = await rqHandler.crudManager.update({
           collection,
           id: targetId,
           fields,
-          invalidateCache: [`/${collection === "posts" ? "posts" : "comments"}_${doc._payload.id}`,
-          `${collection}_recommended_feed_${currentUserId}`,
+          invalidateCache: [
+            `/${collection}_${doc._payload.id}`,
+            `${collection}_recommended_feed_${currentUserId}`,
+            `_feed_${currentUserId}_bookmarks`
           ],
         }, token, true);
 
-        return c.json({ status: 200, message: "Action completed.", res: res._payload });
+        return c.json({
+          status: 200,
+          message: "Action completed.",
+          res: res._payload,
+        });
       }
 
+      // ----------------------------
+      // ❌ Unsupported
+      // ----------------------------
       default:
         return c.json({
           status: ErrorCodes.INVALID_REQUEST,
@@ -814,14 +854,13 @@ app.post("/actions/:type/:action_type", async (c) => {
     return c.json({ status: 200, message: "Action completed." });
 
   } catch (err: any) {
-    console.log(err)
+    console.error(err);
     return c.json({
       status: ErrorCodes.SYSTEM_ERROR,
-      message: err.message || "An error occurred",
+      message: err.message || "An error occurred.",
     }, ErrorCodes.SYSTEM_ERROR);
   }
 });
-
 
 
 
@@ -856,14 +895,14 @@ app.post("/auth/check", async (c) => {
 });
 
 app.post("/auth/register", async (c) => {
-  let { email, password, username, dob } = (await c.req.json()) as any;
-  if (!email || !password || !username || !dob) {
+  let data = (await c.req.json()) as any;
+  if (!data.email || !data.password || !data.username || !data.dob) {
     return c.json({
       status: ErrorCodes.FIELD_MISSING,
       message: ErrorMessages[ErrorCodes.FIELD_MISSING],
     });
   }
-  return _AuthHandler.register(email, password, username, dob, c);
+  return _AuthHandler.register(data, c);
 });
 
 app.get("/auth/verify", async (c) => {
@@ -890,7 +929,7 @@ app.get("/auth/verify", async (c) => {
   }
 });
 
- 
+
 app.post("/auth/refreshtoken", async (c) => {
   let { token } = (await c.req.json()) as any;
   if (
