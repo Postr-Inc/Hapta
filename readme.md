@@ -1,133 +1,90 @@
 # Codename Hapta
 
-What is hapta? - hapta is a backend server layer for pocketbase, it helps you secure connections to your pocketbase database, aswell as allows ratelimit spam protection and total controll over every database crud method.
+**Hapta** is a robust, secure, and highly scalable backend server layer specifically designed for Pocketbase. It acts as an intermediary, enhancing Pocketbase's capabilities by securing connections, providing advanced rate-limiting, and offering granular control over every database CRUD (Create, Read, Update, Delete) operation.
 
-Why does postr use this? - Postr requires 10's of thousands of connections at once - we would not want all those requests to be served to the database directly. Instead we can authenticate - ratelimit - cache  - then serve the content from the database which provides a smoother experience.
-# Features
-1. Token based session management - rolling keys - these change each authentication call,
-    - This prevents users from creating records outside of the app itself, allowing better monitoring.
-3. Oauth2 gateway streaming
-4. Ratelimiting - this is not built into pocketbase directly - it only limits per request action up to a specific cancellation threshold which is not feasible for 10's of thousands of users
-5. Request validation - create custom validation code to validate the record before sent to client or database
-6. File upload handling through websocket stream - and file download handling - file validation
-7. Subscription based sessions - used to randomize sessions per user so no user can grab ones data
-8. Cache - less round trips to the database 
-9. Soon: Categorizing / metrics 
-# Installation
-> **Stop** If you do not know how to use [pocketbase](https://pocketbase.io/docs)
+## Why does Postr use this?
 
-Download a release
+Postr, requiring the ability to handle tens of thousands of concurrent connections, cannot afford to serve all requests directly to the database. Hapta addresses this by authenticating, rate-limiting, and caching content before it reaches the database. This multi-layered approach ensures a significantly smoother, more performant, and secure user experience.
 
-# Usage
-In your env file you can edit the following needed fields
+## Features
+
+1.  **Token-Based Session Management with Rolling Keys:**
+      * Hapta implements advanced token management where session keys change with each authentication call.
+      * This prevents unauthorized record creation or manipulation directly outside the application, allowing for better monitoring and security.
+2.  **Oauth2 Gateway Streaming:**
+      * Supports OAuth2 for secure authentication flows and seamless data streaming.
+3.  **Advanced Rate-Limiting:**
+      * Unlike Pocketbase's direct per-request cancellation threshold, Hapta provides comprehensive rate-limiting capabilities. This is crucial for handling high volumes of requests (tens of thousands of users) and protecting against spam or abuse.
+4.  **Request Validation (Zod Integration):**
+      * **ZODDDD for Robust Input Validation:** Integrated Zod, a TypeScript-first schema declaration and validation library, to enforce strict validation rules on all incoming request bodies, query parameters, and path parameters.
+      * **Improved Error Handling:** Catches invalid inputs early and provides detailed, structured error messages, making it easier for clients to debug and correct their requests.
+5.  **File Upload and Download Handling:**
+      * Manages file uploads efficiently, including handling through WebSocket streams, and provides robust file download capabilities with validation.
+6.  **Subscription-Based Sessions:**
+      * Utilizes subscription-based sessions to randomize user sessions, adding an extra layer of security and preventing unauthorized data access between users.
+7.  **Intelligent Caching:**
+      * Reduces round trips to the database by caching frequently accessed data.
+      * **Normalized Cache Key Structure:** Cache keys now follow a more normalized order (e.g., `u/username`, `posts_recommended_feed_userId`) ensuring that static pages or user-specific data persist effectively across sessions and are only invalidated when relevant data changes. This prevents unnecessary API flooding and provides a smoother experience for individual users.
+8.  **Comprehensive Documentation:**
+      * **Inline Code Documentation:** The entire codebase is thoroughly commented using JSDoc-style annotations, providing clear explanations for functions, routes, and logic directly within the files.
+      * **External API Documentation (Swagger/OpenAPI):**
+          * **Swagger UI:** Access interactive API documentation at the root path (`/`).
+          * **OpenAPI Specification:** A detailed OpenAPI 3.0.0 JSON specification is available at `/openapi.json`.
+          * **Scalar API Reference:** An alternative, interactive documentation interface is provided at `/api-reference`.
+9.  **Optimized Code Organization:**
+      * **Modular Architecture:** The codebase has been fully optimized into separate, logical files and directories (e.g., `src/middleware/`, `src/routes/auth.ts`, `src/utils/validationSchemas.ts`).
+      * **Enhanced Maintainability:** This modular approach significantly improves code readability, simplifies future development, and makes debugging more straightforward by separating concerns into distinct, manageable units.
+10. **Soon:** Categorization and advanced metrics for deeper insights.
+
+## Installation
+
+> **Stop** If you do not know how to use [Pocketbase](https://pocketbase.io/docs)
+
+Download a release for your platform.
+
+## Usage
+
+Configure your server by setting the following fields in your `.env` file:
+
 ```env
-DB_URL=
-ADMIN_EMAIL=
-ADMIN_PASSWORD= 
-HAPTA_ADMIN_KEY=
-SSL_ENABLED=true
-JWT_SECRET=
+DB_URL=http://localhost:8090 # Your Pocketbase instance URL
+ADMIN_EMAIL=admin@example.com # Pocketbase admin email
+ADMIN_PASSWORD=your_admin_password # Pocketbase admin password
+HAPTA_ADMIN_KEY=your_hapta_admin_key # A secret key for Hapta's internal admin operations (optional/if needed by your setup) 
 ```
-Create a config.ts file and paste the following
+
+Create a `config.ts` file in your `src` directory (e.g., `src/config.ts`) and paste the following:
 
 ```ts
-
+// src/config.ts
 export default {
-    port: 3000,
-    hostname: "localhost",
-    developmentMode: true, 
-    ratelimits:{
-        default:{
-            limit: 10,
-            every: 1000,
-            maxUses: 0
-        },
-        list:{
-            limit: 10,
-            every: 1000,
-            maxUses: 0
-        }, 
-    }, 
-    rules: '/rules.ts',
-}
-
-```
-
-# Custom rules
-You can write a rules entry file to validate all records before and or after they are returned to db/user
-
-```ts
-
-console.log('worker started');
-
-declare var self: Worker;
-declare var TokenManager: globalThis.TokenManager;
-declare var ErrorCodes: globalThis.ErrorCodes
-
-self.onmessage = (event: MessageEvent) => {
-    const { type, data, id, token } = event.data.record;
-
-     
-    const checkOwnership = () => {
-        const authID = TokenManager.decode(token).id;
-
-        if (authID !== id) {
-            self.postMessage({ error: true, code: ErrorCodes.OWNERSHIP_REQUIRED });
-            return false;
-        }
-        return true;
-    };
-
-    switch (type) {
-        case 'update':
-            try {
-                if (!checkOwnership()) return;
-
-                if (data.collection === "users" && TokenManager.decode(token).id  == id) {
-                    
-                        const cannotUpdate = ['validVerified', 'postr_plus', 'followers', 'postr_subscriber_since'];
-                         
-    
-                        for (const key in data.record) {
-                            if (cannotUpdate.includes(key)) {
-                                self.postMessage({ error: true, code: ErrorCodes.OWNERSHIP_REQUIRED });
-                                return;
-                            }
-                        }
-    
-                    
-                }else{
-                    const others = ['username', 'email', 'verified', 'validVerified', 'postr_plus', 'following', 'bio', 'postr_subscriber_since'];
-                    for (const key in data.record) {
-                        if (!others.includes(key)) {
-                            self.postMessage({ error: true, code: ErrorCodes.OWNERSHIP_REQUIRED });
-                            return;
-                        }
-                    }
-                }
-    
-                self.postMessage({ error: false, message: 'success' });
-            } catch (error) {
-                console.log(error);
-            }
-            break;
-
-        case 'delete':
-            if (!checkTokenValidity() || !checkOwnership()) return;
-
-            self.postMessage({ error: false, message: 'success' });
-            break;
-    }
+    Server: {
+        Port: 3000, // Port for the Hapta server to listen on
+        Hostname: "localhost", // Hostname for the server
+        SSL: false // Set to true if you are running Hapta with SSL/TLS
+    },
+    Security: {
+        Secret: "your_super_secret_jwt_key", // IMPORTANT: This should be a strong, unique secret for JWT signing.
+                                             // It should ideally match the JWT_SECRET from your .env file.
+    },
+    developmentMode: true, // Enable development-specific features (e.g., verbose logging)
+    ratelimit: {
+        isEnabled: true, // Set to false to disable all rate limiting
+        // Specific rate limits for HTTP and WebSocket are managed in middleware
+    },
+    rules: './rules.ts', // Path to your custom rules file for advanced validation
 };
-
 ```
+
+To run the server:
+
 ```bash
 chmod +x ./hapta-server && ./hapta-server
 ```
 
-# Build yourself
 
-1. Download the source code
-2. Customize to your use case - things like expansions - name - filters - or cache controll logic
-3. Then run `./build.sh` and your code will be packaged to a  hapta-server file for several server types 
+## Build Yourself
 
+1.  Download the source code.
+2.  Customize to your specific use case, including expansions, naming conventions, filters, or cache control logic.
+3.  Then run `./Scripts/build.sh` (assuming you have a build script named `build.sh`) to package your code into a `hapta-server` executable for various server types.
