@@ -1,0 +1,2 @@
+[model]
+ model_path = "./v1-panther/model.json"
