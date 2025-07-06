@@ -57,23 +57,28 @@ Create a `config.ts` file in your `src` directory (e.g., `src/config.ts`) and pa
 
 ```ts
 // src/config.ts
-export default {
-    Server: {
-        Port: 3000, // Port for the Hapta server to listen on
-        Hostname: "localhost", // Hostname for the server
-        SSL: false // Set to true if you are running Hapta with SSL/TLS
-    },
-    Security: {
-        Secret: "your_super_secret_jwt_key", // IMPORTANT: This should be a strong, unique secret for JWT signing.
-                                             // It should ideally match the JWT_SECRET from your .env file.
-    },
-    developmentMode: true, // Enable development-specific features (e.g., verbose logging)
-    ratelimit: {
-        isEnabled: true, // Set to false to disable all rate limiting
-        // Specific rate limits for HTTP and WebSocket are managed in middleware
-    },
-    rules: './rules.ts', // Path to your custom rules file for advanced validation
-};
+import crypto from "crypto";
+ 
+export default { 
+  Server:{
+    Port: 3599,
+    Nodes: [], // `localhost:3025` 
+    NodeId:0,
+    MainNode: "ws://localhost:3599/ws/cache-sync",
+    threads: 4,
+    nodeEnabled: false
+  },
+  Security:{
+    Secret: crypto.randomUUID()
+  },
+  ratelimit:{
+    Max: 10,
+    Duration: 60000,
+    IP: true,
+    isEnabled: true,
+    Message:"You have reached the maximum number of requests per minute"
+  }
+}
 ```
 
 To run the server:
