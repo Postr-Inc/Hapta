@@ -92,7 +92,7 @@ export default (_AuthHandler: any, isTokenValidFn: Function, rqHandler: RequestH
       const body = await c.req.json();
 
       // Validate JSON body
-      const result = JsonCollectionOperationSchema.safeParse(body);
+      const result = schemas.JsonCollectionOperationSchema.safeParse(body);
       if (!result.success) {
         c.status(400);
         return c.json({
