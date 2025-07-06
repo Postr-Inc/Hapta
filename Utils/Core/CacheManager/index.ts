@@ -1,16 +1,27 @@
+import config from "../../../config";
+
 //@ts-nocheck
 const COMPRESSION_THRESHOLD = 1024;
-
+interface CacheSyncMessage {
+  action: "set" | "delete" | "invalidate";
+  key: string;
+  data?: any; // For 'set', the new cache value
+  expiresAt?: number;
+  source: number;
+}
 export default class CacheController {
   private cache: Map<string, { data: any; ttl: number; compressed?: boolean }>;
   public timesVisited: Map<string, { incremental: number; cacheType: string }>;
+  private broadcastCallback?: (msg: CacheSyncMessage) => void;
 
   constructor() {
     this.cache = new Map();
     this.timesVisited = new Map();
     this.startExpirationCheck();
   }
-
+  public setBroadcastCallback(callback: (msg: CacheSyncMessage) => void) {
+    this.broadcastCallback = callback;
+  }
   // ==== CACHE KEY HELPERS ====
 
   /** 
@@ -27,26 +38,26 @@ export default class CacheController {
    * Normalize cache key by removing page numbers from pattern: _<number>_feed
    * and removing undefined/null parts.
    */
-normalizeCacheKey(key: string): string {
-  let k = key.toLowerCase().trim();
+  normalizeCacheKey(key: string): string {
+    let k = key.toLowerCase().trim();
 
-  // Remove leading slash if present
-  if (k.startsWith("/")) k = k.slice(1);
+    // Remove leading slash if present
+    if (k.startsWith("/")) k = k.slice(1);
 
-  const parts = k.split("_");
-  if (parts.includes("feed")) {
-    const feedIdx = parts.indexOf("feed");
-    if (feedIdx >= 2 && Number.isInteger(Number(parts[feedIdx - 1]))) {
-      parts.splice(feedIdx - 1, 1); // remove page
+    const parts = k.split("_");
+    if (parts.includes("feed")) {
+      const feedIdx = parts.indexOf("feed");
+      if (feedIdx >= 2 && Number.isInteger(Number(parts[feedIdx - 1]))) {
+        parts.splice(feedIdx - 1, 1); // remove page
+      }
     }
+    return parts.join("_");
   }
-  return parts.join("_");
-}
 
 
   // ==== CACHE SET/GET/DELETE ====
 
-  public set(key: string, data: any, expiresAt: number = 0): any {
+  public set(key: string, data: any, expiresAt: number = 0, isInternal?: false): any {
     if (!key || key.includes("undefined") || key.includes("null")) {
       console.warn(`[CacheController] WARNING: cache key contains undefined or null: ${key}`);
     }
@@ -68,6 +79,10 @@ normalizeCacheKey(key: string): string {
       this.cache.set(key, { data, ttl: expiry, compressed: false });
     }
 
+    if (this.broadcastCallback && !isInternal) {
+      console.log("true")
+      this.broadcastCallback({ action: "set", key, data, expiresAt, source:  parseInt(config.Server.NodeId as any) });
+    }
     return data;
   }
 
@@ -96,6 +111,9 @@ normalizeCacheKey(key: string): string {
   }
 
   public delete(key: string): boolean {
+    if (this.broadcastCallback) {
+      this.broadcastCallback({ action: "delete", key, source:  parseInt(config.Server.NodeId as any)  });
+    }
     return this.cache.delete(key);
   }
 
@@ -109,30 +127,35 @@ normalizeCacheKey(key: string): string {
    * Invalidate cache keys matching any of the normalized raw keys.
    * Uses regex to match keys ignoring page numbers and handles undefined/null.
    */
-public invalidateCacheByNormalizedKeys(rawKeys: string[], verbose = false) {
-  const normalizedTargets = rawKeys.map((key) => this.normalizeCacheKey(key.trim()));
-  const keysToDelete: string[] = [];
-
-  for (const key of this.cache.keys()) {
-    const normalizedKey = this.normalizeCacheKey(key);
-
-    for (const target of normalizedTargets) {
-      if (normalizedKey.startsWith(target) || normalizedKey.includes(target) || normalizedKey.endsWith(target)) {
-        keysToDelete.push(key);
-        break;
+  public invalidateCacheByNormalizedKeys(rawKeys: string[], isInternal = false, verbose = false)
+ {
+    const normalizedTargets = rawKeys.map((key) => this.normalizeCacheKey(key.trim()));
+    const keysToDelete: string[] = [];
+    if (this.broadcastCallback && !isInternal) {
+      for (const key of rawKeys) {
+        this.broadcastCallback({ action: "invalidate", key, source:  parseInt(config.Server.NodeId as any)  });
       }
     }
-  }
+    for (const key of this.cache.keys()) {
+      const normalizedKey = this.normalizeCacheKey(key);
 
-  for (const key of keysToDelete) {
-    this.cache.delete(key);
-    if (verbose) console.log(`[CacheController] Invalidated normalized cache key: ${key}`);
-  }
+      for (const target of normalizedTargets) {
+        if (normalizedKey.startsWith(target) || normalizedKey.includes(target) || normalizedKey.endsWith(target)) {
+          keysToDelete.push(key);
+          break;
+        }
+      }
+    }
 
-  if (verbose && keysToDelete.length === 0) {
-    console.log(`[CacheController] No cache keys matched for normalized invalidation on: ${rawKeys.join(", ")}`);
+    for (const key of keysToDelete) {
+      this.cache.delete(key);
+      if (verbose) console.log(`[CacheController] Invalidated normalized cache key: ${key}`);
+    }
+
+    if (verbose && keysToDelete.length === 0) {
+      console.log(`[CacheController] No cache keys matched for normalized invalidation on: ${rawKeys.join(", ")}`);
+    }
   }
-}
 
 
 
