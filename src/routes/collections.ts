@@ -5,10 +5,11 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 
 import * as schemas from '../utils/validationSchemas.ts'; // Import all schemas
+import RequestHandler from "../../Utils/Core/RequestHandler/index.ts";
 
 const collections = new Hono();
 
-export default (_AuthHandler: any, isTokenValidFn: Function, rqHandler: any, HttpCodes: any, ErrorCodes: any, ErrorMessages: any) => {
+export default (_AuthHandler: any, isTokenValidFn: Function, rqHandler: RequestHandler, HttpCodes: any, ErrorCodes: any, ErrorMessages: any) => {
 
   /**
    * Collection Operations Endpoint (CRUD).
@@ -105,6 +106,99 @@ export default (_AuthHandler: any, isTokenValidFn: Function, rqHandler: any, Htt
     c.status(result.opCode || HttpCodes.OK);
     return c.json(result);
   });
+  collections.get("/:collection", async (c) => {
+    const { collection } = c.req.param();
+
+    const id = c.req.query("id"); // if id is present, get single item
+
+    const token = c.req.header("Authorization");
+    if (!isTokenValidFn(token, _AuthHandler)) {
+      c.status(ErrorCodes.INVALID_OR_MISSING_TOKEN);
+      return c.json({
+        status: ErrorCodes.INVALID_OR_MISSING_TOKEN,
+        message: ErrorMessages[ErrorCodes.INVALID_OR_MISSING_TOKEN],
+      });
+    }
+
+    if (id) {
+      // Handle GET single item
+      const optionsRaw = c.req.query("options") || "{}";
+      let options = {};
+      try {
+        options = JSON.parse(optionsRaw);
+      } catch {
+        options = {};
+      }
+
+      const payload = {
+        collection,
+        id,
+        options,
+      };
+
+      const result = await rqHandler.handleMessage(
+        {
+          type: "get",
+          payload,
+        },
+        token
+      );
+
+      return c.json(result);
+    } else {
+      // Handle list
+      const page = c.req.query("page") ? parseInt(c.req.query("page")!, 10) : 1;
+      const limit = c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : 10;
+
+      let optionsRaw = c.req.query("options") || "{}";
+      let options = {};
+      try {
+        options = JSON.parse(optionsRaw);
+      } catch {
+        options = {};
+      }
+
+      const {
+        order,
+        expand,
+        recommended = false,
+        cacheKey,
+      } = options;
+
+      const filter = typeof options.filter === "string" ? options.filter : JSON.stringify(options.filter || "{}");
+      const sort = typeof options.sort === "string" ? options.sort : undefined;
+
+      const expandArr = Array.isArray(expand) ? expand : expand ? [expand] : [];
+
+      const payload = {
+        collection,
+        page,
+        limit,
+        options: {
+          filter,
+          sort,
+          order,
+          expand: expandArr,
+          recommended,
+          cacheKey,
+        },
+      };
+
+      const result = await rqHandler.handleMessage(
+        {
+          type: "list",
+          payload,
+        },
+        token
+      );
+
+      // Return result
+      return c.json(result);
+    }
+  });
+
+
+
 
   return collections;
 };
