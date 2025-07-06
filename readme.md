@@ -1,95 +1,210 @@
-# Codename Hapta
+---
 
-**Hapta** is a robust, secure, and highly scalable backend server layer specifically designed for Pocketbase. It acts as an intermediary, enhancing Pocketbase's capabilities by securing connections, providing advanced rate-limiting, and offering granular control over every database CRUD (Create, Read, Update, Delete) operation.
+# 🚀 **Codename: Hapta**
 
-## Why does Postr use this?
+**Hapta** is a robust, secure, and highly scalable backend server layer built specifically for **Pocketbase**. Acting as an intelligent intermediary, it enhances Pocketbase’s core capabilities by adding security, advanced rate-limiting, granular request validation, and intelligent caching for tens of thousands of concurrent users.
 
-Postr, requiring the ability to handle tens of thousands of concurrent connections, cannot afford to serve all requests directly to the database. Hapta addresses this by authenticating, rate-limiting, and caching content before it reaches the database. This multi-layered approach ensures a significantly smoother, more performant, and secure user experience.
+---
 
-## Features
+## ✨ **Why does Postr use Hapta?**
 
-1.  **Token-Based Session Management with Rolling Keys:**
-      * Hapta implements advanced token management where session keys change with each authentication call.
-      * This prevents unauthorized record creation or manipulation directly outside the application, allowing for better monitoring and security.
-2.  **Oauth2 Gateway Streaming:**
-      * Supports OAuth2 for secure authentication flows and seamless data streaming.
-3.  **Advanced Rate-Limiting:**
-      * Unlike Pocketbase's direct per-request cancellation threshold, Hapta provides comprehensive rate-limiting capabilities. This is crucial for handling high volumes of requests (tens of thousands of users) and protecting against spam or abuse.
-4.  **Request Validation (Zod Integration):**
-      * **ZODDDD for Robust Input Validation:** Integrated Zod, a TypeScript-first schema declaration and validation library, to enforce strict validation rules on all incoming request bodies, query parameters, and path parameters.
-      * **Improved Error Handling:** Catches invalid inputs early and provides detailed, structured error messages, making it easier for clients to debug and correct their requests.
-5.  **File Upload and Download Handling:**
-      * Manages file uploads efficiently, including handling through WebSocket streams, and provides robust file download capabilities with validation.
-6.  **Subscription-Based Sessions:**
-      * Utilizes subscription-based sessions to randomize user sessions, adding an extra layer of security and preventing unauthorized data access between users.
-7.  **Intelligent Caching:**
-      * Reduces round trips to the database by caching frequently accessed data.
-      * **Normalized Cache Key Structure:** Cache keys now follow a more normalized order (e.g., `u/username`, `posts_recommended_feed_userId`) ensuring that static pages or user-specific data persist effectively across sessions and are only invalidated when relevant data changes. This prevents unnecessary API flooding and provides a smoother experience for individual users.
-8.  **Comprehensive Documentation:**
-      * **Inline Code Documentation:** The entire codebase is thoroughly commented using JSDoc-style annotations, providing clear explanations for functions, routes, and logic directly within the files.
-      * **External API Documentation (Swagger/OpenAPI):**
-          * **Swagger UI:** Access interactive API documentation at the root path (`/`).
-          * **OpenAPI Specification:** A detailed OpenAPI 3.0.0 JSON specification is available at `/openapi.json`.
-          * **Scalar API Reference:** An alternative, interactive documentation interface is provided at `/api-reference`.
-9.  **Optimized Code Organization:**
-      * **Modular Architecture:** The codebase has been fully optimized into separate, logical files and directories (e.g., `src/middleware/`, `src/routes/auth.ts`, `src/utils/validationSchemas.ts`).
-      * **Enhanced Maintainability:** This modular approach significantly improves code readability, simplifies future development, and makes debugging more straightforward by separating concerns into distinct, manageable units.
-10. **Soon:** Categorization and advanced metrics for deeper insights.
+Postr requires handling **tens of thousands of concurrent connections** efficiently — but directly hitting the database for every request is unsustainable and insecure. **Hapta** solves this with:
 
-## Installation
+✅ **Smart authentication**
+✅ **Session management with rolling keys**
+✅ **OAuth2 streaming**
+✅ **Granular rate-limiting**
+✅ **Intelligent caching and normalization**
 
-> **Stop** If you do not know how to use [Pocketbase](https://pocketbase.io/docs)
+The result: a smoother, faster, more secure user experience **without hammering your Pocketbase instance directly**.
 
-Download a release for your platform.
+---
 
-## Usage
+## ⚙️ **Key Features**
 
-Configure your server by setting the following fields in your `.env` file:
+### 🔑 1. Token-Based Session Management with Rolling Keys
 
-```env
-DB_URL=http://localhost:8090 # Your Pocketbase instance URL
-ADMIN_EMAIL=admin@example.com # Pocketbase admin email
-ADMIN_PASSWORD=your_admin_password # Pocketbase admin password
-HAPTA_ADMIN_KEY=your_hapta_admin_key # A secret key for Hapta's internal admin operations (optional/if needed by your setup) 
+* Advanced tokens rotate with every auth call.
+* Prevents unauthorized record creation or manipulation outside your official app.
+* Better security and monitoring.
+
+### 🔐 2. OAuth2 Gateway Streaming
+
+* Native support for secure OAuth2 flows.
+* Streaming capability for real-time data.
+
+### 🚦 3. Advanced Rate-Limiting
+
+* Go beyond Pocketbase’s basic request threshold.
+* Hapta implements **IP-aware**, global, and per-user rate limits.
+* Stops spam and abuse under heavy loads.
+
+### ✅ 4. Robust Input Validation (Zod)
+
+* Integrated **Zod** for strict schema validation.
+* Validates all **bodies**, **query params**, and **path params**.
+* Helpful, structured error messages for clients.
+
+### 📁 5. Secure File Uploads & Downloads
+
+* Streams large uploads efficiently.
+* Handles robust download flows with validation.
+
+### 🔄 6. Subscription-Based Sessions
+
+* Randomized session allocation.
+* Prevents unauthorized data cross-access between users.
+
+### ⚡️ 7. Intelligent Edge Caching
+
+* Caches frequently accessed data to reduce DB round trips.
+* **Normalized cache keys** (e.g., `u/username`, `posts_recommended_feed_userId`) ensure:
+
+  * Static or user-specific data persists logically.
+  * Cache only invalidates on real data changes.
+  * Smoother experience and reduced API flooding.
+
+### 📚 8. Comprehensive Documentation
+
+* **Inline JSDoc:** Detailed code comments.
+* **OpenAPI & Swagger:**
+
+  * Interactive API docs at `/`
+  * OpenAPI JSON at `/openapi.json`
+  * Scalar UI at `/api-reference`
+
+### 🗂️ 9. Clean, Modular Codebase
+
+* Organized into logical modules: `src/middleware/`, `src/routes/auth.ts`, `src/utils/validationSchemas.ts`.
+* Easier to debug, extend, and maintain.
+
+### 📊 10. Coming Soon: Categorization & Deep Metrics
+
+* Gain deeper insight into usage patterns, API trends, and abuse detection.
+
+---
+
+## 🚀 **Getting Started**
+
+### 📦 **1. Install**
+
+> 📌 **Note:** You must already be familiar with [Pocketbase](https://pocketbase.io/docs).
+
+Download a pre-built release for your platform.
+Or build from source — see **Build Yourself** below.
+
+---
+
+### 🛠️ **2. Configure**
+
+Create a `.env` file:
+
+```dotenv
+DB_URL=http://localhost:8090           # Your Pocketbase instance URL
+ADMIN_EMAIL=admin@example.com          # Pocketbase admin email
+ADMIN_PASSWORD=your_admin_password     # Pocketbase admin password
+HAPTA_ADMIN_KEY=your_hapta_admin_key   # Optional: secret key for internal admin ops
 ```
 
-Create a `config.ts` file in your `src` directory (e.g., `src/config.ts`) and paste the following:
+Create `src/config.ts`:
 
 ```ts
 // src/config.ts
 import crypto from "crypto";
- 
-export default { 
-  Server:{
+
+export default {
+  Server: {
     Port: 3599,
-    Nodes: [], // `localhost:3025` 
-    NodeId:0,
+    Nodes: [], // e.g., `localhost:3025`
+    NodeId: 0,
     MainNode: "ws://localhost:3599/ws/cache-sync",
     threads: 4,
     nodeEnabled: false
   },
-  Security:{
+  Security: {
     Secret: crypto.randomUUID()
   },
-  ratelimit:{
+  ratelimit: {
     Max: 10,
     Duration: 60000,
     IP: true,
     isEnabled: true,
-    Message:"You have reached the maximum number of requests per minute"
+    Message: "You have reached the maximum number of requests per minute"
   }
-}
+};
 ```
 
-To run the server:
+---
+
+### ⚡ **3. Run**
 
 ```bash
-chmod +x ./hapta-server && ./hapta-server
+chmod +x ./hapta-server
+./hapta-server
 ```
 
+✅ **Your secure gateway is now running.**
 
-## Build Yourself
+---
 
-1.  Download the source code.
-2.  Customize to your specific use case, including expansions, naming conventions, filters, or cache control logic.
-3.  Then run `./Scripts/build.sh` (assuming you have a build script named `build.sh`) to package your code into a `hapta-server` executable for various server types.
+### ⚙️ **Optional: Multi-Node Cluster**
+
+To scale horizontally:
+
+1. Start each **node** with:
+
+   ```bash
+   ./hapta-server --mainNode false --NodeId 2
+   ```
+
+   `NodeId` must be unique for each.
+
+2. Your **main node** should have:
+
+   ```ts
+   Nodes: ["localhost:3025"], // example other nodes
+   ```
+
+3. Start the **main node** with:
+
+   ```bash
+   bun run dev --mainNode true
+   ```
+
+Users are **round-robin assigned** to a node on auth — sessions persist and nodes sync via WebSocket.
+
+---
+
+## 🔨 **Build Yourself**
+
+Prefer to build from source?
+
+1. Clone the repo.
+2. Customize logic, expansions, or naming.
+3. Run:
+
+   ```bash
+   ./Scripts/build.sh
+   ```
+4. Deploy your new `hapta-server` binary.
+
+---
+
+## ✅ **Why Hapta + Pocketbase = Better**
+
+* 🧱 **More secure**: Rolling tokens and OAuth2 streams.
+* 🏎️ **Faster**: Edge caching and normalized keys.
+* 🔐 **Safer**: Strong input validation and granular rate limits.
+* 🗂️ **Cleaner**: Well-organized, documented code.
+
+---
+
+## 📄 **License**
+
+Open source — MIT. Build, fork, extend as you wish!
+
+---
+
+**Built for Postr. Powered by Hapta.**
+
+--- 
