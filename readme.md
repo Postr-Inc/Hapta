@@ -1,10 +1,7 @@
----
-
 # 🚀 **Codename: Hapta**
 
 **Hapta** is a robust, secure, and highly scalable backend server layer built specifically for **Pocketbase**. Acting as an intelligent intermediary, it enhances Pocketbase’s core capabilities by adding security, advanced rate-limiting, granular request validation, and intelligent caching for tens of thousands of concurrent users.
 
----
 
 ## ✨ **Why does Postr use Hapta?**
 
