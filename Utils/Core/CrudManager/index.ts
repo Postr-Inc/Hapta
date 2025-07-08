@@ -394,8 +394,7 @@ export default class CrudManager<T = any> {
                     .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
 
                 const unpinned = data
-                    .filter(post => !post.pinned)
-                    .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+                    .filter(post => !post.pinned) 
 
                 data = [...pinned, ...unpinned];
             }
