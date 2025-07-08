@@ -1,18 +1,29 @@
- import { decode } from "hono/jwt";
-import CacheController from "../CacheManager";  
-import Pocketbase from "pocketbase";  
-import Validate from "./Helpers/Validate";  
-import { generateHashtext } from "../Ai"; 
+import { decode } from "hono/jwt";
+import CacheController from "../CacheManager";
+import Pocketbase from "pocketbase";
+import Validate from "./Helpers/Validate";
+import { extractHashtags, generateHashtext } from "../Ai";
 import { Tasks } from "../Concurrency/Enums/Tasks";
 import { ErrorCodes, ErrorMessages } from "../../Enums/Errors";
 import { HttpCodes } from "../../Enums/HttpCodes";
-import { c } from "../../../src"; 
- 
+import { c } from "../../../src";
+import RecommendationAlgorithmHandler from "../RecommendationAlgorithmHandler";
+import { WebSocket } from "bun";
+
 interface CrudPayload {
+    /**
+     * The name of the collection to operate on.
+     */
     collection: string;
+    /**
+     * The data to create or update.
+     */
     data?: any; // For create
     id?: string; // For get, update, delete
     expand?: string[];
+    /**
+     * List of cache keys to invalidate after the operation.
+     */
     invalidateCache?: string[];
     cacheKey: string;
     page?: number; // For list
@@ -38,11 +49,17 @@ interface FileData {
 
 // Define the expected structure for responses
 interface CrudResponse<T = any> {
-    _payload: T | null;
+    _payload: T | T[] | null; // The main payload, can be a single record or an array
     opCode: HttpCodes | ErrorCodes;
     message?: string;
     totalItems?: number;
     totalPages?: number;
+}
+interface PaginatedRecords<T> {
+    id: string;
+    collectionId: string;
+    collectionName: string;
+    [key: string]: any; // Other fields
 }
 
 // Define the shape of a Pocketbase record, adjust as needed
@@ -55,11 +72,17 @@ interface PocketbaseRecord {
     expand?: Record<string, any>; // Expanded relations
     [key: string]: any; // Other fields
 }
- 
+
 const createQueue = new Map();
 const updateQueue = new Map();
 const deleteQueue = new Map();
- 
+
+// Extend globalThis to include a typed 'listeners' property
+declare global {
+    // eslint-disable-next-line no-var
+    var listeners: [{ ws: WebSocket }]
+}
+
 /**
  * Joins an array of expand strings for Pocketbase, handling special cases.
  * @param expand Array of expand strings.
@@ -94,9 +117,9 @@ function handleFiles(data: FileData | FileData[]): File[] {
         if (!fileData || !fileData.data) return; // Skip invalid file data
 
         const array = new Uint8Array(fileData.data);
-        const blob = new Blob([array]); 
+        const blob = new Blob([array]);
         const name = fileData.name || `${Math.random().toString(36).substring(7)}${Date.now().toString(36)}`;
-        const type = fileData.type || "application/octet-stream"; 
+        const type = fileData.type || "application/octet-stream";
 
         files.push(new File([blob], name, { type }));
     };
@@ -109,9 +132,9 @@ function handleFiles(data: FileData | FileData[]): File[] {
     return files;
 }
 
-export default class CrudManager {
+export default class CrudManager<T = any> {
     private cache: CacheController;
-    private pb: Pocketbase;  
+    private pb: Pocketbase;
 
     constructor(cache: CacheController, pb: Pocketbase) {
         this.cache = cache;
@@ -143,19 +166,25 @@ export default class CrudManager {
 
         try {
             // Handle files in data if any
-            if (payload.data?.files && (Array.isArray(payload.data.files) || payload.data.files.data)) {
-                payload.data.files = handleFiles(payload.data.files);
+            if (payload.data?.files) {
+                if (Array.isArray(payload.data.files) && payload.data.files[0] instanceof File) {
+                    // Already native File objects — do nothing
+                } else {
+                    // JSON `{ data: [...] }` format — call handleFiles
+                    payload.data.files = handleFiles(payload.data.files);
+                }
             }
+
 
             // Create record in Pocketbase
             // Ensure payload.expand is handled correctly (pass undefined if empty)
             const expandOption = joinExpand(payload.expand, payload.collection, "create");
-            const res: PocketbaseRecord = await this.pb.collection(payload.collection).create(payload.data, {
+            const res: PocketbaseRecord = await this.pb.admins.client.collection(payload.collection).create(payload.data, {
                 ...(expandOption && { expand: expandOption }),
             });
 
             // Invalidate cache keys matching prefixes if needed
-            if (payload.invalidateCache?.length) { 
+            if (payload.invalidateCache?.length) {
                 this.cache.invalidateCacheByNormalizedKeys(payload.invalidateCache, true);
             }
 
@@ -163,31 +192,37 @@ export default class CrudManager {
             if (payload.collection === "posts") {
                 // 1. Generate and update hashtags
                 // Consider batching hashtag creation and post update for performance
-                const hashTags = generateHashtext(payload.data.content);
-                const createdHashtagIds: string[] = [];
+                const hashTags = extractHashtags(res.content || "");
 
+                const createdHashtagIds: string[] = [];
                 // Use Promise.all for concurrent hashtag creation
                 await Promise.all(hashTags.map(async (tag: string) => {
                     try {
-                        const hashTagRecord = { content: tag, posts: [res.id] };
-                        const h = await this.pb.collection("hashtags").create(hashTagRecord);
-                        createdHashtagIds.push(h.id);
-                    } catch (hashtagError) {
-                        // Log error but don't block the main flow
-                        console.error(`Error creating hashtag "${tag}":`, hashtagError);
+                        const existingHashtag = await this.pb.collection("Hashtags").getFirstListItem(`name="${tag}"`, { expand: "posts" });
+                        // this should continue because it will throw a 404 if not found
+                        createdHashtagIds.push(existingHashtag.id);
+                    } catch (error: any) {
+                        if (error.status === 404) {
+                            // Create new hashtag if it doesn't exist
+                            console.log(`Creating new hashtag: ${tag}`);
+                            const newHashtag = await this.pb.collection("Hashtags").create({ name: tag, posts: [res.id] });
+                            createdHashtagIds.push(newHashtag.id);
+                        } else {
+                            console.error(`Error fetching or creating hashtag ${tag}:`, error);
+                        }
                     }
                 }));
 
                 if (createdHashtagIds.length > 0) {
-                    // Update the post with the new hashtags. Use existing hashtags if any.
-                    await this.pb.collection("posts").update(res.id, {
-                        hashtags: [...(res.hashtags || []), ...createdHashtagIds],
-                    }); 
-                } 
+                    // Update the post with the created hashtag IDs
+                    await this.pb.collection("posts").update(res.id, { hashtags: createdHashtagIds });
+                }
+
+
+
                 for (const key of this.cache.keys()) {
                     if (key.includes("feed")) {
-                        const cacheData = this.cache.get(key); // `get` handles decompression
-                        // Ensure cacheData._payload exists and is an array before trying to prepend
+                        const cacheData = this.cache.get(key);
                         if (cacheData && cacheData._payload && Array.isArray(cacheData._payload)) {
                             // Prepend the *newly created* record, potentially with expand.
                             // Ensure 'res' has all necessary fields expected by feed display.
@@ -197,6 +232,31 @@ export default class CrudManager {
                         }
                     }
                 }
+
+                globalThis.listeners?.forEach(async (listener: { ws: WebSocket }) => {
+                    let rank = await new RecommendationAlgorithmHandler({
+                        _payload: [res as any],
+                        totalItems: 1,
+                        totalPages: 1,
+                        token,
+                        userId: decodedId as string
+                    }).process(null)
+                    // rank post so that it can be displayed in recommendations feed
+                    if (rank.items[0].rank > 1 && res.collectionName !== "comments") {
+                        listener.ws.send(JSON.stringify({
+                            status: HttpCodes.OK,
+                            message: "Action completed successfully.",
+                            data: {
+                                type: "post_created",
+                                action: "create",
+                                targetId: res.id,
+                                collection: payload.collection,
+                                userId: decodedId,
+                                res: res,
+                            },
+                        }));
+                    }
+                });
             }
 
             return { _payload: res, opCode: HttpCodes.OK, message: "Record created successfully" };
@@ -212,7 +272,7 @@ export default class CrudManager {
         }
     }
 
-    
+
     /**
      * Invalidate cache entries by normalized matching keys.
      * Delegates to the CacheController's `invalidateCacheByNormalizedKeys` method.
@@ -223,16 +283,16 @@ export default class CrudManager {
         this.cache.invalidateCacheByNormalizedKeys(targetKeys, verbose);
     }
 
-     
+
     public async saveChanges(): Promise<void> {
         const allKeys = [
             ...createQueue.keys(),
             ...updateQueue.keys(),
             ...deleteQueue.keys(),
-        ]; 
+        ];
         const results = await Promise.allSettled(allKeys.map(async (key) => {
             console.log(`Rolling queue for ${key}`);
-            await (global as any).rollQueue(key, this.pb);  
+            await (global as any).rollQueue(key, this.pb);
         }));
 
         results.forEach((result, index) => {
@@ -253,7 +313,7 @@ export default class CrudManager {
      * @param token User authentication token.
      * @returns CrudResponse with paginated records or error.
      */
-    public async list(payload: CrudPayload, token: string): Promise<CrudResponse> {
+    public async list(payload: CrudPayload, token: string): Promise<CrudResponse<PaginatedRecords<T>>> {
         let decodedId: string | null = null;
         try {
             decodedId = decode(token).payload.id as string;
@@ -265,37 +325,32 @@ export default class CrudManager {
         const stableOptions = {
             filter: payload.options?.filter || "",
             sort: payload.options?.sort || "",
-            expand: payload.options?.expand ? [...payload.options.expand].sort().join(",") : "", // Sort expand for consistency
+            expand: payload.options?.expand ? [...payload.options.expand].sort().join(",") : "",
             order: payload.options?.order || "",
             recommended: payload.options?.recommended || false,
         };
 
-        // Construct cache key using CacheController's buildCacheKey for consistency
-        const cacheKey = payload.cacheKey || `${payload.collection}_list_${JSON.stringify(stableOptions)}`; 
+        const cacheKey = payload.cacheKey || `${payload.collection}_list_${JSON.stringify(stableOptions)}`;
 
-        // Retrieve and update cache status
         let cacheStatus = this.cache.timesVisited.get(cacheKey) ?? { incremental: 0, cacheType: "six_hour_immediate" };
         cacheStatus.incremental++;
         this.cache.timesVisited.set(cacheKey, cacheStatus);
 
-        // Determine expiration time dynamically based on frequency
         let expirationTime: number;
-        if (cacheStatus.incremental > 5) { // More frequent access -> shorter cache life
+        if (cacheStatus.incremental > 5) {
             const minMinutes = 15, maxMinutes = 45;
             expirationTime = Date.now() + (Math.floor(Math.random() * (maxMinutes - minMinutes + 1)) + minMinutes) * 60 * 1000;
-        } else if (cacheStatus.incremental > 0) { // Some access -> medium cache life
+        } else if (cacheStatus.incremental > 0) {
             const minHours = 1, maxHours = 5;
             expirationTime = Date.now() + (Math.floor(Math.random() * (maxHours - minHours + 1)) + minHours) * 60 * 60 * 1000;
-        } else { // First access -> default longer cache life
+        } else {
             expirationTime = Date.now() + 6 * 60 * 60 * 1000;
         }
 
-        // Try cache hit *before* validation and PB call for maximum performance
-        const cachedResponse = this.cache.get(cacheKey); // Will return null if expired or not found
-        if (cachedResponse) { // If a valid (non-expired) entry is found
-            // Update expiration time if the new calculated time is later
+        const cachedResponse = this.cache.get(cacheKey);
+        if (cachedResponse) {
             if (cachedResponse.expirationTime < expirationTime) {
-                this.cache.set(cacheKey, { ...cachedResponse, expirationTime }); // Update only TTL
+                this.cache.set(cacheKey, { ...cachedResponse, expirationTime });
                 console.log(`Extended cache expiration for key: ${cacheKey}`);
             }
             return {
@@ -308,11 +363,10 @@ export default class CrudManager {
 
         console.log(`Cache miss for key: ${cacheKey}. Fetching data...`);
 
-        // Validate request *after* cache check if cache hit is possible
-        const hasIssue = await Validate(payload, "list", decodedId, this.cache, false, token as any); // Pass decodedId
-        if (hasIssue) return { _payload: null, ...hasIssue };
+        const hasIssue = await Validate(payload, "list", decodedId, this.cache, false, token as any);
+        if (hasIssue) return { _payload: null, ...hasIssue, message: hasIssue.message || "Validation failed for list request." };
 
-        try { 
+        try {
             const sortString = payload.options?.sort || (payload.options?.order === "asc" ? "created" : "-created");
             const pbExpandOption = joinExpand(payload.options?.expand, payload.collection, "list");
 
@@ -320,34 +374,47 @@ export default class CrudManager {
                 sort: sortString,
                 filter: payload.options?.filter,
                 ...(pbExpandOption && { expand: pbExpandOption }),
-                cache: "force-cache",  
+                cache: "force-cache",
+            }) as any;
+
+            let data = pbResponse.items as PocketbaseRecord[];
+
+            data = await c.run(Tasks.FILTER_THROUGH_LIST, {
+                list: data,
+                collection: payload.collection,
             });
 
-            let data = pbResponse.items as PocketbaseRecord[]; // Cast for type safety
- 
-            data = await c.run(Tasks.FILTER_THROUGH_LIST, { list: data, collection: payload.collection });
- 
-            if (payload.options?.sort?.includes("-pinned") && payload.collection === "posts" && data.length > 0) {
-                data = [
-                    ...data.filter(post => post.pinned),
-                    ...data.filter(post => !post.pinned),
-                ];
+            if (
+                payload.options?.sort?.includes("-pinned") &&
+                payload.collection === "posts" &&
+                data.length > 0
+            ) {
+                const pinned = data
+                    .filter(post => post.pinned)
+                    .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+
+                const unpinned = data
+                    .filter(post => !post.pinned)
+                    .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+
+                data = [...pinned, ...unpinned];
             }
 
-            const response = {
-                _payload: data,  
+
+            // Cache the response with the calculated expiration time
+            this.cache.set(cacheKey, {
+                _payload: data,
+                expirationTime, // Store the expiration time in the cached object
                 totalItems: pbResponse.totalItems,
                 totalPages: pbResponse.totalPages,
+            }, expirationTime);
+
+            return {
                 opCode: HttpCodes.OK,
+                _payload: data,
+                totalItems: pbResponse.totalItems,
+                totalPages: pbResponse.totalPages,
             };
-
-            // Cache response with the calculated expiration time
-            this.cache.set(cacheKey, {
-                ...response, // Include _payload, totalItems, totalPages
-                expirationTime, // Store the expiration time in the cached object
-            });
-
-            return response;
         } catch (error: any) {
             console.error("Error listing records:", error);
             const message = error.data?.message || ErrorMessages[ErrorCodes.SYSTEM_ERROR];
@@ -365,7 +432,7 @@ export default class CrudManager {
      * @param token User authentication token.
      * @returns CrudResponse with the record or error.
      */
-    public async get(payload: CrudPayload, token: string): Promise<CrudResponse> {
+    public async get<U = T>(payload: CrudPayload, token: string): Promise<CrudResponse<U>> {
         let decodedId: string | null = null;
         try {
             decodedId = decode(token).payload.id as string;
@@ -375,7 +442,7 @@ export default class CrudManager {
 
         // Compose cacheKey using CacheController's buildCacheKey for consistency
         const baseCacheKey = `${payload.collection}_${payload.id}_get_${JSON.stringify(payload.options || {})}`;
-        const cacheKey = this.cache.buildCacheKey(baseCacheKey, decodedId || "guest");
+        const cacheKey = payload.cacheKey || this.cache.buildCacheKey(baseCacheKey, decodedId || "guest");
 
         // Cache frequency management (copied from list, consider abstracting this)
         let cacheStatus = this.cache.timesVisited.get(cacheKey) ?? { incremental: 0, cacheType: "six_hour_immediate" };
@@ -410,7 +477,7 @@ export default class CrudManager {
             const hasIssue = await Validate(payload, "get", decodedId, this.cache, false, token); // Pass decodedId
             if (hasIssue) {
                 console.warn("Validation failed for get request:", hasIssue);
-                 return { _payload: null, ...hasIssue };
+                return { _payload: null, ...hasIssue };
             }
         }
 
@@ -420,7 +487,7 @@ export default class CrudManager {
                 ...(pbExpandOption && { expand: pbExpandOption }),
                 cache: "force-cache", // Leverage Pocketbase's internal cache
             });
- 
+
             const processed = await c.run(Tasks.FILTER_THROUGH_LIST, {
                 list: [data],
                 collection: payload.collection,
@@ -430,18 +497,19 @@ export default class CrudManager {
             this.cache.set(cacheKey, {
                 _payload: processed[0],
                 expirationTime, // Store the expiration time in the cached object
-            });
+            }, expirationTime);
+
 
             return { _payload: processed[0], opCode: HttpCodes.OK };
         } catch (error: any) {
             console.error("Error getting record:", error);
             // Handle Pocketbase 404 (not found) specifically
             if (error.status === 404) {
-                 return {
+                return {
                     _payload: null,
                     opCode: ErrorCodes.NOT_FOUND,
                     message: ErrorMessages[ErrorCodes.NOT_FOUND], // Ensure you have this mapping
-                 };
+                };
             }
             const message = error.data?.message || ErrorMessages[ErrorCodes.SYSTEM_ERROR];
             return {
@@ -470,7 +538,7 @@ export default class CrudManager {
         const hasIssue = await Validate(payload, "delete", decodedId, this.cache, false, token);
         if (hasIssue) return { _payload: null, ...hasIssue };
 
-        try { 
+        try {
             for (const key of this.cache.keys()) {
                 const cacheData = this.cache.get(key);
                 // Check if it's a list with _payload array, and if the item is present
@@ -485,7 +553,7 @@ export default class CrudManager {
                     this.cache.delete(key);
                 }
             }
- 
+
             await this.pb.admins.client.collection(payload.collection).delete(payload.id!);
 
             if (payload.invalidateCache?.length) {
