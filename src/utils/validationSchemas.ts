@@ -11,7 +11,16 @@ export const RequestPasswordResetSchema = z.object({
 export const ResetPasswordSchema = z.object({
   resetToken: z.string().min(1, "Reset token is required."),
   password: z.string().min(8, "Password must be at least 8 characters long."),
-});
+}); 
+export const MetricsSchema = z.object({
+  user: z.string().min(1, "User ID is required."),
+  viewed_hashtags: z.array(z.string().min(1, "Hashtag ID is required.")),
+  viewed_profiles: z.array(z.string().min(1, "Profile ID is required.")),
+  posts_liked: z.array(z.string().min(1, "Post ID is required.")),
+  posts_bookmarked: z.array(z.string().min(1, "Post ID is required.")),
+  commented_on_post: z.array(z.string().min(1, "Post ID is required.")),
+  followed_after_post_view: z.array(z.string().min(1, "Post ID is required.")),
+})
 
 export const LoginSchema = z.object({
   emailOrUsername: z.string().min(1, "Email or Username is required").superRefine((val, ctx) => {
@@ -101,7 +110,7 @@ export const MultipartCollectionOperationSchema = z.object({
 
 export const ActionPathParamsSchema = z.object({
   type: z.enum(["users", "posts", "comments"]),
-  action_type: z.enum(["follow", "unfollow", "block", "unblock", "like", "unlike", "bookmark"]),
+  action_type: z.enum(["follow", "unfollow", "block", "unblock", "like", "unlike", "bookmark", "pin", "unpin"]),
 });
 
 export const ActionBodySchema = z.object({
