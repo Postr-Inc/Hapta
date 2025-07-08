@@ -9,10 +9,11 @@ import { ErrorCodes, ErrorMessages } from "../Utils/Enums/Errors/index.ts";
 import * as schemas from '../utils/validationSchemas.ts'; // Import all schemas
 import AuthHandler from "../../Utils/Core/AuthHandler/index.ts";
 import RequestHandler from "../../Utils/Core/RequestHandler/index.ts";
+import { decode } from "hono/jwt";
 
 const actions = new Hono();
 
-export default (_AuthHandler: AuthHandler, isTokenValidFn: Function, rqHandler: RequestHandler, HttpCodes: any, ErrorCodes: any, ErrorMessages: any, decodeFn: Function) => {
+export default (_AuthHandler: AuthHandler, isTokenValidFn: Function, rqHandler: RequestHandler, HttpCodes: any, ErrorCodes: any, ErrorMessages: any, decodeFn: decode) => {
 
   /**
    * Actions Endpoint (Follow, Like, Bookmark, Block).
@@ -52,7 +53,7 @@ export default (_AuthHandler: AuthHandler, isTokenValidFn: Function, rqHandler: 
         }, ErrorCodes.INVALID_OR_MISSING_TOKEN);
       }
 
-      const decodedToken = decodeFn(token) as any;
+      const decodedToken = decodeFn(token);
       const currentUserId = decodedToken.payload?.id;
       const isBasicToken = decodedToken.payload?.isBasicToken;
 
@@ -125,6 +126,27 @@ export default (_AuthHandler: AuthHandler, isTokenValidFn: Function, rqHandler: 
             updateTargetUserFields.followers = targetUser.followers;
             updateTargetUserFields.blockedBY = targetUser.blockedBY;
 
+            globalThis.listeners.forEach((listener) => {
+              if (listener.ws.readyState === WebSocket.OPEN) {
+                listener.ws.send(JSON.stringify({
+                  status: HttpCodes.OK,
+                  message: "Action completed successfully.",
+                  data: {
+                    type: "users",
+                    action: action_type,
+                    targetId: targetId,
+                    userId: currentUserId,
+                    res: {
+                      ...(action_type === "follow" || action_type === "unfollow" ? {
+                        targetUser: targetUser,
+                        currentUser: currentUser,
+                      } : {}),
+                    },
+                  },
+                }));
+              }
+            });
+
 
             await Promise.all([
               rqHandler.crudManager.update({
@@ -147,7 +169,7 @@ export default (_AuthHandler: AuthHandler, isTokenValidFn: Function, rqHandler: 
           case "posts":
           case "comments": {
             const collection = type;
-            const docRecord = await rqHandler.crudManager.get({ collection, id: targetId }, token);
+            const docRecord = await rqHandler.crudManager.get({ collection, id: targetId, expand:["author"] }, token);
 
             if (!docRecord || !docRecord._payload) {
               return c.json({
@@ -178,6 +200,18 @@ export default (_AuthHandler: AuthHandler, isTokenValidFn: Function, rqHandler: 
                 doc.bookmarked = doc.bookmarked.filter((id: string) => id !== currentUserId);
               }
               fieldsToUpdate.bookmarked = doc.bookmarked;
+            } else if (action_type === "pin") {
+              if (doc.author !== decode(token).payload.id) {
+                throw new Error(`You are unauthorized for this action`);
+              }
+              doc.pinned = true
+              fieldsToUpdate.pinned = true
+            } else if (action_type === "unpin") {
+              if (doc.author !== decode(token).payload.id) {
+                throw new Error(`You are unauthorized for this action`);
+              }
+              doc.pinned = false;
+              fieldsToUpdate.pinned = false;
             } else {
               throw new Error(`Invalid ${collection.slice(0, -1)} action type.`);
             }
@@ -185,8 +219,10 @@ export default (_AuthHandler: AuthHandler, isTokenValidFn: Function, rqHandler: 
             invalidateCachePaths = [
               `/${collection}_${doc.id}`,
               `${collection}_recommended_feed_${currentUserId}`,
-              `_feed_${currentUserId}_bookmarks`
-            ];
+              `_feed_${currentUserId}_bookmarks`,
+              (action_type === "pin" || action_type === "unpin") &&  decodedToken.payload.username ? `/u/${decodedToken.payload.username}_posts` : undefined
+               (action_type === "pin" || action_type === "unpin") && decodedToken.payload.username  ? `/u/${decodedToken.payload.username}` : undefined
+            ].filter(Boolean);
 
             const res = await rqHandler.crudManager.update({
               collection,
@@ -194,6 +230,23 @@ export default (_AuthHandler: AuthHandler, isTokenValidFn: Function, rqHandler: 
               fields: fieldsToUpdate,
               invalidateCache: invalidateCachePaths,
             }, token, true);
+
+            if (action_type !== "unpin" || action_type !== "pin") {
+              globalThis.listeners.forEach((listener) => {
+                listener.ws.send(JSON.stringify({
+                  status: HttpCodes.OK,
+                  message: "Action completed successfully.",
+                  data: {
+                    type: collection,
+                    action: action_type,
+                    targetId: targetId,
+                    userId: currentUserId,
+                    res: res._payload,
+                  },
+                }));
+              }
+              );
+            }
 
             return c.json({
               status: HttpCodes.OK,
