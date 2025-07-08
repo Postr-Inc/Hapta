@@ -328,10 +328,11 @@ export default class CrudManager<T = any> {
             expand: payload.options?.expand ? [...payload.options.expand].sort().join(",") : "",
             order: payload.options?.order || "",
             recommended: payload.options?.recommended || false,
+            page: payload.page,
+            limit: payload.limit
         };
 
-        const cacheKey = payload.cacheKey || `${payload.collection}_list_${JSON.stringify(stableOptions)}`;
-
+        const cacheKey = payload.cacheKey || `${payload.collection}_list_${JSON.stringify(stableOptions)}`; 
         let cacheStatus = this.cache.timesVisited.get(cacheKey) ?? { incremental: 0, cacheType: "six_hour_immediate" };
         cacheStatus.incremental++;
         this.cache.timesVisited.set(cacheKey, cacheStatus);
