@@ -45,10 +45,9 @@ export default (_AuthHandler: any, isTokenValidFn: Function, rqHandler: RequestH
       // Collect payload fields
       payload = {};
       for (const [key, value] of form.entries()) {
-        if (["type", "security", "callback"].includes(key)) continue;
+        if (["type", "security", "callback", "files"].includes(key)) continue; // skip 'files' here
 
         if (key === "payload") {
-          // Merge the parsed JSON into the root payload
           try {
             const parsed = JSON.parse(value.toString());
             if (typeof parsed === "object" && parsed !== null) {
@@ -57,11 +56,7 @@ export default (_AuthHandler: any, isTokenValidFn: Function, rqHandler: RequestH
           } catch {
             console.warn("Could not parse payload field");
           }
-        } else if (value instanceof File) {
-          if (!payload.files) payload.data.files = [];
-          payload.data.files.push(value);
         } else {
-          // Parse JSON if possible
           try {
             payload[key] = JSON.parse(value.toString());
           } catch {
@@ -70,6 +65,13 @@ export default (_AuthHandler: any, isTokenValidFn: Function, rqHandler: RequestH
         }
       }
 
+      const files = form.getAll("files"); // get all files with key "files"
+      if (files.length > 0) {
+        if (!payload.data) payload.data = {};
+        payload.data.files = files;
+      }
+
+      console.log(payload)
 
       // Inject collection param into payload
       payload.collection = collection;
