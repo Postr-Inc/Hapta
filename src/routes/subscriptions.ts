@@ -10,6 +10,8 @@ import { HttpCodes } from "../../Utils/Enums/HttpCodes/index.ts";
 import { ErrorCodes, ErrorMessages } from "../Utils/Enums/Errors/index.ts";
 import { MessageTypes } from "../../Utils/Enums/MessageTypes/index.ts";
 import * as schemas from '../utils/validationSchemas.ts'; // Import all schemas
+import { rqHandler } from "../index.ts";
+import { URL } from "url";
 
 const { upgradeWebSocket } = createBunWebSocket(); // Need to re-create it locally or pass from index
 
@@ -34,9 +36,12 @@ export default (_AuthHandler: any, MessageTypes: any, HttpCodes: any, ErrorCodes
    * @route GET /subscriptions (WebSocket upgrade)
    */
   subscriptions.get(
-    "/subscriptions",
-    wsLimiter, // Apply websocket specific rate limiting
+    "/",
     upgradeWebSocket((c) => {
+      var token = getCookieFn(c, "Authorization");
+      const urlObj = new URL(c.req.url, "http://localhost"); // Provide a base URL
+      const url = new URLSearchParams(urlObj.search);
+      token = url.has("token") ? url.get("token") : token
       return {
         async onMessage(event, ws) {
           let parsedData: z.infer<typeof schemas.WebSocketMessageSchema>;
@@ -46,14 +51,14 @@ export default (_AuthHandler: any, MessageTypes: any, HttpCodes: any, ErrorCodes
             parsedData = schemas.WebSocketMessageSchema.parse(JSON.parse(event.data));
             const { payload, security } = parsedData;
             callback = parsedData.callback; // Assign callback from parsed data
+            security.token ? token = security.token : null
 
             // Validate token for WebSocket messages
             if (
-              !security?.token ||
-              !_AuthHandler.tokenStore.has(security.token) ||
-              !verifyFn(
-                security.token,
-                _AuthHandler.tokenStore.get(security.token) as string,
+              !token ||
+              !_AuthHandler.tokenStore.has(token) ||
+              !verifyFn(token,
+                _AuthHandler.tokenStore.get(token) as string,
                 "HS256"
               )
             ) {
@@ -96,12 +101,62 @@ export default (_AuthHandler: any, MessageTypes: any, HttpCodes: any, ErrorCodes
                 );
                 break;
               }
+              case MessageTypes.NOTIFY:
+                const data = payload.notification_data as {
+                  recipients: string[], author: string,
+                  message: string, post: string, notification_title: string, notification_body: string, image: string, url: string, comment: string, icon: string
+                }
+
+                var invalid = [];
+                for (const recipient of data.recipients) {
+                  globalThis.listeners.forEach((listener, ws) => {
+                    if (!listener.token) return;
+                    const decoded = decodeFn(listener.token);
+                    if (decoded?.payload?.id === recipient) {
+                      listener.ws.send(JSON.stringify({
+                        type: MessageTypes.NOTIFY,
+                        notification_data: {
+                          author: data.author,
+                          message: data.message,
+                          post: data.post,
+                          comment: data.comment,
+                          notification_title: data.notification_title,
+                          notification_body: data.notification_body,
+                          image: data.image,
+                          icon: data.icon,
+                          url: data.url
+                        }
+                      }));
+                      console.log("Notification sent to user: " + decoded.payload.id);
+                      invalid.push(`/u/${recipient}/notifications`);
+                    }
+                  });
+                }
+                await rqHandler.crudManager.create({
+                  collection: "notifications", data: {
+                    recipients: data.recipients,
+                    author: data.author,
+                    message: data.message,
+                    post: data.post,
+                    comment: data.comment,
+                    notification_title: data.notification_title,
+                    notification_body: data.notification_body,
+                    image: data.image,
+                    url: data.url,
+                    invalidateCache: invalid
+                  }
+                }, token)
+
+                ws.send(JSON.stringify({ status: HttpCodes.OK, message: "Notification sent successfully", callback }))
+                break;
+
               default:
                 ws.send(JSON.stringify({ status: HttpCodes.OK, message: "Connected and message received", callback: callback }));
                 break;
             }
 
-            globalThis.listeners.set(ws, { ws, token: security.token });
+
+
           } catch (error) {
             console.error("WebSocket onMessage error:", error);
             // Handle Zod validation errors specifically
@@ -121,9 +176,26 @@ export default (_AuthHandler: any, MessageTypes: any, HttpCodes: any, ErrorCodes
             }
           }
         },
+        onOpen: (ev, ws) => {
+          const realWs = ws.raw ?? ws;
+          globalThis.listeners.set(ws, { ws, token: token, authenticated: false, userId: token ? decodeFn(token)?.payload?.id : undefined, });
+        },
         onClose: (ev, ws) => {
-          globalThis.listeners.delete(ws);
+          if (globalThis.listeners && globalThis.listeners.length > 0 && globalThis.listeners.find((i) => i === ws) && globalThis.listeners.find((i) => i === ws).token) {
+            let token = decodeFn(globalThis.listeners.find((i) => i === ws).token)
+            rqHandler.crudManager.invalidateCacheBYMatch([
+              `/u/${token.payload.username}`,
+              `/u/user_${token.payload.username}`,
+              `/notifications/${token.payload.username}`
+            ])
+          }
+
           console.log(`WebSocket closed: Code ${ev.code}, Reason: ${ev.reason}`);
+
+
+
+
+          globalThis.listeners.delete(ws);
         },
         onError: (err) => {
           console.error(`WebSocket Error:`, err);
@@ -131,6 +203,11 @@ export default (_AuthHandler: any, MessageTypes: any, HttpCodes: any, ErrorCodes
       };
     })
   );
+
+
+  setInterval(() => {
+
+  }, 1000 * 60)
 
   return subscriptions;
 };
