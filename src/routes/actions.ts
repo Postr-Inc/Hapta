@@ -220,9 +220,9 @@ export default (_AuthHandler: AuthHandler, isTokenValidFn: Function, rqHandler: 
               `/${collection}_${doc.id}`,
               `${collection}_recommended_feed_${currentUserId}`,
               `_feed_${currentUserId}_bookmarks`,
-              (action_type === "pin" || action_type === "unpin") &&  decodedToken.payload.username ? `/u/${decodedToken.payload.username}_posts` : undefined
-               (action_type === "pin" || action_type === "unpin") && decodedToken.payload.username  ? `/u/${decodedToken.payload.username}` : undefined
-            ].filter(Boolean);
+              ((action_type === "pin" || action_type === "unpin") && decodedToken.payload?.username) ? `/u/${decodedToken.payload.username}_posts` : undefined,
+              ((action_type === "pin" || action_type === "unpin") && decodedToken.payload?.username) ? `/u/${decodedToken.payload.username}` : undefined
+            ].filter((v): v is string => typeof v === "string");
 
             const res = await rqHandler.crudManager.update({
               collection,
