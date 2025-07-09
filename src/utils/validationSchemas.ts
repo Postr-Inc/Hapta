@@ -137,19 +137,31 @@ export const EmbedPathParamsSchema = z.object({
 
 // --- WebSocket Message Schema ---
 
-export const WebSocketPayloadSchema = z.object({
-  type: z.nativeEnum(MessageTypes), // Use the MessageTypes enum directly
-  // Add other properties that a WebSocket payload might have
-  // e.g., for AUTH_ROLL_TOKEN, no additional payload is strictly needed here
-  // For other message types, you'd define specific sub-schemas
-});
-
+ 
 export const WebSocketSecuritySchema = z.object({
   token: z.string().min(1, "Token is required for WebSocket security."),
 });
 
 export const WebSocketMessageSchema = z.object({
-  payload: WebSocketPayloadSchema,
-  security: WebSocketSecuritySchema,
+  payload: z.object({
+    type: z.string(),
+    notification_data: z
+      .object({
+        recipients: z.array(z.string()),
+        author: z.string(),
+        message: z.string(),
+        post: z.string().optional(),
+        notification_title: z.string(),
+        notification_body: z.string(),
+        image: z.string().optional(),
+        icon: z.string(),
+        url: z.string(),
+        comment: z.string().optional(),
+      })
+      .optional(),
+  }),
+  security: z.object({
+    token: z.string().optional(),
+  }),
   callback: z.string().optional(),
 });
