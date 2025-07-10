@@ -110,7 +110,7 @@ export const MultipartCollectionOperationSchema = z.object({
 
 export const ActionPathParamsSchema = z.object({
   type: z.enum(["users", "posts", "comments"]),
-  action_type: z.enum(["follow", "unfollow", "block", "unblock", "like", "unlike", "bookmark", "pin", "unpin"]),
+  action_type: z.enum(["follow", "unfollow", "block", "unblock", "like", "unlike", "bookmark", "pin", "unpin", "delete"]),
 });
 
 export const ActionBodySchema = z.object({
