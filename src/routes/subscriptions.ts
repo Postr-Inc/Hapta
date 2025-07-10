@@ -112,6 +112,7 @@ export default (_AuthHandler: any, MessageTypes: any, HttpCodes: any, ErrorCodes
                   globalThis.listeners.forEach((listener, ws) => {
                     if (!listener.token) return;
                     const decoded = decodeFn(listener.token);
+                    console.log(decoded)
                     if (decoded?.payload?.id === recipient) {
                       listener.ws.send(JSON.stringify({
                         type: MessageTypes.NOTIFY,
