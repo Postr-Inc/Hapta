@@ -89,7 +89,7 @@ export function applyGlobalMiddleware(app: Hono, config: any, _AuthHandler: any,
         "Range"
       ],
       allowMethods: ["POST", "GET", "OPTIONS", "PUT", "DELETE", "PATCH", "HEAD"],
-      exposeHeaders: ["Content-Length", "X-Content-Ranges", "Accept-Ranges", "Content-Range"],
+      exposeHeaders: ["Content-Length", "X-Content-Ranges", "Accept-Ranges", "Content-Range",  "Server", "X-Proxied-By"],
       maxAge: 600,
       credentials: true,
     })
@@ -97,7 +97,7 @@ export function applyGlobalMiddleware(app: Hono, config: any, _AuthHandler: any,
 
   // 3. Authentication and Authorization Middleware (Pre-route)
   app.get("*", async (c, next) => {
-    const host = c.req.header("host");
+    const host = c.req.header("host") || "localhost";
     const url = new URL(c.req.url, `http://${host}`).pathname;
 
     // Handle embed subdomain immediately without further processing

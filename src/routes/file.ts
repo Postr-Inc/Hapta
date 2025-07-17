@@ -1,10 +1,11 @@
 // src/routes/files.ts
 //@ts-nocheck
 import { Hono } from "hono";
+import { HttpCodes } from "../../Utils/Enums/HttpCodes";
 
 const files = new Hono();
 
-export default (pb: any, HttpCodes: any) => {
+export default (pb: any ) => {
 
   /**
    * CORS Preflight for File Endpoint.

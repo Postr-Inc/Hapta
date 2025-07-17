@@ -440,6 +440,110 @@ export default (config: any) => {
             },
           },
         },
+        '/collection/{collection}': {
+          get: {
+            tags: ['Collections'],
+            summary: 'Retrieve a single record or a paginated list from a collection',
+            description: `
+Fetches:
+- **One record** if \`id\` query param is provided.
+- **List of records** if \`id\` is omitted.
+
+Supports advanced filters, expansions, sorting, and cache keys.
+`,
+            security: [{ bearerAuth: [] }],
+            parameters: [
+              {
+                name: 'collection',
+                in: 'path',
+                required: true,
+                schema: { type: 'string' },
+                description: 'The name of the collection.',
+              },
+              {
+                name: 'id',
+                in: 'query',
+                required: false,
+                schema: { type: 'string' },
+                description: 'ID of the record to fetch. If provided, performs single-record GET.',
+              },
+              {
+                name: 'options',
+                in: 'query',
+                required: false,
+                schema: { type: 'string' },
+                description: `JSON string with additional query options:
+- **expand**: related fields to expand (array)
+- **filter**: filter conditions (stringified)
+- **sort**: sort criteria
+- **order**: order direction
+- **recommended**: boolean
+- **cacheKey**: custom cache key`,
+                example:
+                  '{"expand":["author","comments","comments.author"],"filter":"status = \'published\'","cacheKey":"post-xyz"}',
+              },
+              {
+                name: 'page',
+                in: 'query',
+                required: false,
+                schema: { type: 'integer', default: 1 },
+                description: 'Page number for listing multiple records.',
+              },
+              {
+                name: 'limit',
+                in: 'query',
+                required: false,
+                schema: { type: 'integer', default: 10 },
+                description: 'Items per page for listing multiple records.',
+              },
+            ],
+            responses: {
+              200: {
+                description: 'Successfully retrieved record or list.',
+                content: {
+                  'application/json': {
+                    schema: {
+                      oneOf: [
+                        {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string' },
+                            collection: { type: 'string' },
+                            data: { type: 'object' },
+                          },
+                        },
+                        {
+                          type: 'object',
+                          properties: {
+                            page: { type: 'integer' },
+                            limit: { type: 'integer' },
+                            totalItems: { type: 'integer' },
+                            items: {
+                              type: 'array',
+                              items: {
+                                type: 'object',
+                                properties: {
+                                  id: { type: 'string' },
+                                  collection: { type: 'string' },
+                                  data: { type: 'object' },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+              400: { description: 'Invalid options or query parameters.' },
+              401: { description: 'Unauthorized — missing or invalid token.' },
+              500: { description: 'Internal server error.' },
+            },
+          },
+          // Keep your POST for CRUD below as you already have
+        },
+
 
         '/actions/{type}/{action_type}': {
           post: {

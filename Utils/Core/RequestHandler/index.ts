@@ -3,6 +3,7 @@ import CrudManager from "../CrudManager";
 import RecommendationAlgorithmHandler from "../RecommendationAlgorithmHandler";  
 import { cache, pb } from "../../../src";
 import { MessageTypes } from "../../Enums/MessageTypes";
+import { decode } from "hono/jwt";
  
 interface CrudResult {
     _payload?: any;
@@ -54,10 +55,14 @@ export default class RequestHandler {
                     const recommendedHandler = new RecommendationAlgorithmHandler({
                         _payload: listResult._payload,
                         totalPages: payload.limit, // This might be `payload.options.limit` or calculated differently
-                        totalItems: listResult.totalItems ?? 0
+                        totalItems: listResult.totalItems ?? 0,
+                        userId: decode(token).payload.id as string,
+                        token: token // Pass the token for any necessary authorization in RecommendationAlgorithmHandler
                     });
 
-                    const { items: recommended, totalItems, totalPages } = recommendedHandler.process();
+                    const metrics = await recommendedHandler.initUserMetrics()
+
+                    const { items: recommended, totalItems, totalPages } = await recommendedHandler.process(metrics);
 
                     return {
                         opCode: 200,

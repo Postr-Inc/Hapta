@@ -122,6 +122,8 @@ worker.on(Tasks.FILTER_THROUGH_LIST, (data: {list: any[], collection: string}) =
       case "posts":
        return list.map(filterEmails);
     }
+
+    return list; // Default case, return the list as is
 });
 
  

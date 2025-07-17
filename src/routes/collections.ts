@@ -204,13 +204,13 @@ export default (_AuthHandler: any, isTokenValidFn: Function, rqHandler: RequestH
         collection,
         page,
         limit,
+        cacheKey,
         options: {
           filter,
           sort,
           order,
           expand: expandArr,
-          recommended,
-          cacheKey,
+          recommended, 
         },
       };
 

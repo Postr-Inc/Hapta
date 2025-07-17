@@ -135,6 +135,7 @@ worker.on(
       case "comments":
         return list.map(filterEmails);
     }
+    return list;
   }
 );
 

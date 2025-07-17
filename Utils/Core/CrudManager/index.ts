@@ -80,7 +80,7 @@ const deleteQueue = new Map();
 // Extend globalThis to include a typed 'listeners' property
 declare global {
     // eslint-disable-next-line no-var
-    var listeners: [{ ws: WebSocket }]
+    var listeners: [{ ws: WebSocket , token: string}]
 }
 
 /**
@@ -321,18 +321,19 @@ export default class CrudManager<T = any> {
             console.warn("Invalid token provided in list, proceeding as guest.");
         }
 
-        // Sort options to create a consistent cache key
+        // Include pagination params explicitly in cache key
         const stableOptions = {
             filter: payload.options?.filter || "",
             sort: payload.options?.sort || "",
             expand: payload.options?.expand ? [...payload.options.expand].sort().join(",") : "",
             order: payload.options?.order || "",
             recommended: payload.options?.recommended || false,
-            page: payload.page,
-            limit: payload.limit
+            page: payload.page ?? 1,
+            limit: payload.limit ?? 10,
         };
 
-        const cacheKey = payload.cacheKey || `${payload.collection}_list_${JSON.stringify(stableOptions)}`; 
+        const cacheKey = payload.cacheKey || `${payload.collection}_list_${JSON.stringify(stableOptions)}`;
+
         let cacheStatus = this.cache.timesVisited.get(cacheKey) ?? { incremental: 0, cacheType: "six_hour_immediate" };
         cacheStatus.incremental++;
         this.cache.timesVisited.set(cacheKey, cacheStatus);
@@ -362,69 +363,83 @@ export default class CrudManager<T = any> {
             };
         }
 
-        console.log(`Cache miss for key: ${cacheKey}. Fetching data...`);
+        console.log(`Cache miss for key: ${cacheKey}. Fetching all data...`);
 
         const hasIssue = await Validate(payload, "list", decodedId, this.cache, false, token as any);
-        if (hasIssue) return { _payload: null, ...hasIssue, message: hasIssue.message || "Validation failed for list request." };
+        if (hasIssue) {
+            return {
+                _payload: null,
+                opCode: hasIssue.opCode,
+                message: hasIssue.message || "Validation failed for list request.",
+            };
+        }
 
         try {
-            const sortString = payload.options?.sort || (payload.options?.order === "asc" ? "created" : "-created");
+            // Fetch all posts without pagination
             const pbExpandOption = joinExpand(payload.options?.expand, payload.collection, "list");
 
-            const pbResponse = await this.pb.admins.client.collection(payload.collection).getList(payload.page!, payload.limit!, {
-                sort: sortString,
+            const allItems = await this.pb.admins.client.collection(payload.collection).getFullList({
                 filter: payload.options?.filter,
                 ...(pbExpandOption && { expand: pbExpandOption }),
+                sort: "-created", // sort by created descending as base, pinned will be handled locally
                 cache: "force-cache",
-            }) as any;
+            }) as PocketbaseRecord[];
 
-            let data = pbResponse.items as PocketbaseRecord[];
-
-            data = await c.run(Tasks.FILTER_THROUGH_LIST, {
-                list: data,
+            // Filter through tasks if needed
+            const filteredItems = await c.run(Tasks.FILTER_THROUGH_LIST, {
+                list: allItems,
                 collection: payload.collection,
             });
 
-            if (
-                payload.options?.sort?.includes("-pinned") &&
-                payload.collection === "posts" &&
-                data.length > 0
-            ) {
-                const pinned = data
-                    .filter(post => post.pinned)
-                    .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+            // Local sort: pinned first by created desc, then unpinned by created desc
+            // If pinned, sort by created DESC. If not pinned, sort by created DESC.
+            // But pinned posts always above unpinned, but within each group, sort by created DESC.
+            // Sort: pinned posts by pinned DESC (most recently pinned first), then by created DESC within pinned,
+            // then unpinned posts by created DESC
+       const sorted = filteredItems.sort((a, b) => {
+    const aPinned = !!a.pinned;
+    const bPinned = !!b.pinned;
 
-                const unpinned = data
-                    .filter(post => !post.pinned) 
+    // If one is pinned and the other isn't, pinned comes first
+    if (aPinned !== bPinned) {
+        return aPinned ? -1 : 1;
+    }
+    
+    // For both pinned or both unpinned, sort by created DESC (most recent first)
+    return new Date(b.created).getTime() - new Date(a.created).getTime();
+});
 
-                data = [...pinned, ...unpinned];
-            }
+            // Local pagination
+            const page = payload.page ?? 1;
+            const limit = payload.limit ?? 10;
 
+            const paginated = sorted.slice((page - 1) * limit, page * limit);
 
-            // Cache the response with the calculated expiration time
+            // Cache the paginated result with total counts
             this.cache.set(cacheKey, {
-                _payload: data,
-                expirationTime, // Store the expiration time in the cached object
-                totalItems: pbResponse.totalItems,
-                totalPages: pbResponse.totalPages,
+                _payload: paginated,
+                expirationTime,
+                totalItems: sorted.length,
+                totalPages: Math.ceil(sorted.length / limit),
             }, expirationTime);
 
             return {
                 opCode: HttpCodes.OK,
-                _payload: data,
-                totalItems: pbResponse.totalItems,
-                totalPages: pbResponse.totalPages,
+                _payload: paginated,
+                totalItems: sorted.length,
+                totalPages: Math.ceil(sorted.length / limit),
             };
         } catch (error: any) {
             console.error("Error listing records:", error);
-            const message = error.data?.message || ErrorMessages[ErrorCodes.SYSTEM_ERROR];
+            const message = error?.data?.message || ErrorMessages[ErrorCodes.SYSTEM_ERROR];
             return {
                 _payload: null,
                 opCode: ErrorCodes.SYSTEM_ERROR,
-                message: message,
+                message,
             };
         }
     }
+
 
     /**
      * Retrieves a single record from Pocketbase by ID, with caching.
@@ -538,23 +553,8 @@ export default class CrudManager<T = any> {
         const hasIssue = await Validate(payload, "delete", decodedId, this.cache, false, token);
         if (hasIssue) return { _payload: null, ...hasIssue };
 
-        try {
-            for (const key of this.cache.keys()) {
-                const cacheData = this.cache.get(key);
-                // Check if it's a list with _payload array, and if the item is present
-                if (cacheData?._payload && Array.isArray(cacheData._payload) && cacheData._payload.some((item: any) => item.id === payload.id)) {
-                    // Filter out the deleted item
-                    cacheData._payload = cacheData._payload.filter((item: any) => item.id !== payload.id);
-                    // Re-set the updated array. Consider if TTL should be maintained or reset.
-                    this.cache.set(key, cacheData, Date.now() + 3600 * 1000); // 1 hour cache, consistent with your original
-                }
-                // Also explicitly delete individual cached items if they exist
-                if (key.includes(`${payload.collection}_${payload.id}_get`)) {
-                    this.cache.delete(key);
-                }
-            }
-
-            await this.pb.admins.client.collection(payload.collection).delete(payload.id!);
+        try { 
+            await this.pb.collection(payload.collection).delete(payload.id!);
 
             if (payload.invalidateCache?.length) {
                 this.invalidateCacheBYMatch(payload.invalidateCache, true); // Add verbose for debugging

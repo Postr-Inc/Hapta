@@ -119,52 +119,7 @@ export default (cache: any, rqHandler: any, EmbedEngine: any, HttpCodes: any, Er
    * Renders dynamic HTML content for embedding.
    * @route GET /embed/:collection/:id/:type
    */
-  utility.get(
-    "/embed/:collection/:id/:type",
-    zValidator('param', schemas.EmbedPathParamsSchema, (result, c) => {
-      if (!result.success) {
-        c.status(HttpCodes.BAD_REQUEST);
-        return c.json({
-          status: ErrorCodes.INVALID_REQUEST,
-          message: "Invalid path parameters for embed.",
-          errors: result.error.errors,
-        });
-      }
-    }),
-    async (c) => {
-      const { collection, id, type } = c.req.valid('param');
-      try {
-        if (!rqHandler || !rqHandler.crudManager) {
-          throw new Error("RequestHandler or CrudManager not initialized.");
-        }
-        const record = await rqHandler.crudManager.get({
-          collection, id, isEmbed: true, options: {
-            expand: ["author"]
-          }
-        });
-
-        if (!record) {
-          c.status(HttpCodes.NOT_FOUND);
-          return c.json({
-            error: true,
-            message: "Embed content not found.",
-            status: HttpCodes.NOT_FOUND
-          });
-        }
-
-        const Embedder = new EmbedEngine(type, record);
-        return c.html(await Embedder.render());
-      } catch (error) {
-        console.error("Error rendering embed:", error);
-        c.status(HttpCodes.INTERNAL_SERVER_ERROR);
-        return c.json({
-          error: true,
-          message: ErrorMessages[ErrorCodes.DATABASE_ERROR] || "Failed to render embed content.",
-          status: ErrorCodes.DATABASE_ERROR
-        });
-      }
-    }
-  );
+   
 
   /**
    * Health Check Endpoint.

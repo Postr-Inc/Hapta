@@ -1,4 +1,6 @@
 export interface Post {
+    id: string;
+    collectionId: string;
     created: string | number | Date;
     author: string;
     content: string;
@@ -8,6 +10,7 @@ export interface Post {
     bookmarked: string[];
     pinned: boolean,
     likes: string[];
+    summary: string;
     mentioned: string[];
     shares: string[];
     whoCanSee:  "public" | "private" | "following";
@@ -29,6 +32,7 @@ export interface Post {
     Publish_At: string;
     isNSFW: boolean;
     links: null | string[];
+    hashtags: string[];
     rank: number;
     expand: {
         author:{

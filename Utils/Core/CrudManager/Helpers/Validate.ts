@@ -44,7 +44,7 @@ interface CrudPayload {
  * @returns A ValidationResult object if there's an error, otherwise `null` or `undefined`.
  */
 export default async function Validate(
-    data: CrudPayload,
+    data: any,
     method: string,
     decodedId: string | null, // Explicitly allow null if token is optional/invalid
     cache: CacheController, // Use the correct type
@@ -53,6 +53,7 @@ export default async function Validate(
 ): Promise<ValidationResult | null> { // Return null on success
     if (skip) return null; // No error if validation is skipped
 
+    
     let error: ValidationResult | null = null; // Initialize as null
 
     // For debugging:
@@ -93,13 +94,16 @@ export default async function Validate(
         case "create":
             // Specific validation for 'posts' and 'comments'
             if (data.collection === "posts" || data.collection === "comments") {
+                if(data.payload){
+                    data = data.payload as any;
+                }
                 if (!decodedId) { // Ensure user is authenticated to create
                      error = {
                         opCode: ErrorCodes.UNAUTHORIZED_REQUEST,
                         _payload: { message: "Authentication required to create this record." }
                     };
                     break;
-                }
+                } 
                 if (data.data?.author !== decodedId) { // Check if author matches authenticated user
                     error = {
                         opCode: ErrorCodes.UNAUTHORIZED_REQUEST,

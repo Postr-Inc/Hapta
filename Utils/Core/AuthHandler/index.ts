@@ -40,47 +40,74 @@ export default class AuthHandler {
     }
 
     public async trackDevice({
-        userId,
-        deviceInfo,
-        ipAddress,
-    }: {
-        userId: string;
-        deviceInfo: Record<string, any> | null;
-        ipAddress: string;
-    }) {
-        const activeDevices = (await this.pb.collection("Devices").getFullList({
-            filter: `account="${userId}"`,
-            batch: Number.MAX_SAFE_INTEGER,
-        })) as any[];
+  userId,
+  deviceInfo,
+  ipAddress,
+}: {
+  userId: string;
+  deviceInfo: Record<string, any> | null;
+  ipAddress: string;
+}) {
+  // Basic validation: skip if IP is missing, 'none', or local IP (adjust as needed)
+  if (
+    !ipAddress ||
+    ipAddress.toLowerCase() === "none" ||
+    ipAddress === "127.0.0.1" ||
+    ipAddress === "::1"
+  ) {
+    console.log(`Skipping device tracking for invalid IP: ${ipAddress}`);
+    return;
+  }
 
-        const deviceName =
-            typeof deviceInfo === "object" && deviceInfo !== null && deviceInfo.userAgent
-                ? deviceInfo.userAgent.split(")")[0].split("(")[1] || "Unknown Device"
-                : "Unknown Device";
-
-        const existingDevice = activeDevices.find(
-            (device: any) => device.ip === ipAddress
-        );
-
-        if (existingDevice) {
-            // Device exists → update last login
-            await this.pb.collection("Devices").update(existingDevice.id, {
-                lastLogin: new Date().toISOString(),
-            });
-        } else {
-            // New device → create + link to user
-            const newDevice = await this.pb.collection("Devices").create({
-                ip: ipAddress,
-                account: userId,
-                lastLogin: new Date().toISOString(),
-                name_of_device: deviceName,
-            });
-
-            await this.pb.collection("users").update(userId, {
-                ActiveDevices: [...activeDevices.map((d) => d.id), newDevice.id],
-            });
-        }
+  // Sanitize device name
+  let deviceName = "Unknown Device";
+  if (deviceInfo && typeof deviceInfo.userAgent === "string") {
+    try {
+      const uaPart = deviceInfo.userAgent.split(")")[0];
+      deviceName = uaPart.split("(")[1]?.trim() || deviceName;
+    } catch {
+      // fallback to default deviceName
     }
+  }
+
+  // Fetch user's devices
+  const activeDevices = (await this.pb.collection("Devices").getFullList({
+    filter: `account="${userId}"`,
+    batch: Number.MAX_SAFE_INTEGER,
+  })) as any[];
+
+  // Check if device with same IP exists
+  const existingDevice = activeDevices.find((device: any) => device.ip === ipAddress);
+
+  const nowISO = new Date().toISOString();
+
+  if (existingDevice) {
+    // Throttle lastLogin updates: update only if lastLogin was more than 10 minutes ago
+    const lastLoginTime = new Date(existingDevice.lastLogin).getTime();
+    if (Date.now() - lastLoginTime > 10 * 60 * 1000) {
+      await this.pb.collection("Devices").update(existingDevice.id, {
+        lastLogin: nowISO,
+      });
+    }
+  } else {
+    // Create new device and link to user
+    const newDevice = await this.pb.collection("Devices").create({
+      ip: ipAddress,
+      account: userId,
+      lastLogin: nowISO,
+      name_of_device: deviceName,
+    });
+
+    // Append new device id to user's ActiveDevices field, avoiding duplicates
+    const existingDeviceIds = activeDevices.map((d) => d.id);
+    if (!existingDeviceIds.includes(newDevice.id)) {
+      await this.pb.collection("users").update(userId, {
+        ActiveDevices: [...existingDeviceIds, newDevice.id],
+      });
+    }
+  }
+}
+
 
     public async resetPassword(resetToken: string, password: string, hono: any) {
         try {
@@ -211,6 +238,7 @@ export default class AuthHandler {
                 id: user.record.id,
                 username: user.record.username,
                 created: user.record.created,
+                nodeId: config.Server.NodeId,
                 exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
             };
 

@@ -84,9 +84,9 @@ export default (authHandler: AuthHandler, isTokenValidFn: Function, rqHandler:Re
   /**
    * Generate Basic Auth Token Endpoint.
    * Generates a simple token for programmatic access with specified permissions.
-   * @route POST /auth/get-basic-auth-token
+   * @route GET /auth/get-basic-auth-token
    */
-  auth.post("/get-basic-auth-token", async (c) => {
+  auth.get("/get-basic-auth-token", async (c) => {
     // Use a strong, unique secret for signing each basic token
     const signingSecret = config.Security.Secret + crypto.randomUUID();
     const tokenId = crypto.randomUUID(); // Unique ID for this specific token instance
@@ -95,6 +95,7 @@ export default (authHandler: AuthHandler, isTokenValidFn: Function, rqHandler:Re
     const token = await sign({
       isBasicToken: true,
       id: tokenId, // Store a unique ID for this token, not a user ID
+      nodeId: config.Server.NodeId, 
       permissions: ["read", "write", "delete"]
     }, signingSecret, "HS256") as string;
 

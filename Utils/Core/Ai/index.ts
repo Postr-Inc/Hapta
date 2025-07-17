@@ -1,321 +1,565 @@
 //@ts-nocheck
-import config from "./config.toml" 
+import config from "./config.toml"
 const { dataset: trainingData } = {
+
     "dataset": [
-        {"text":"Hello world", "summary":"greeting the world"},
-        {"text":"Goodbye to the world", "summary":"saying goodbye to the world"},
-        {"text": "The weather today is sunny with a high of 75 degrees. It's a great day for a picnic.", "summary": "sunny weather"},
-        {"text": "New advancements in AI technology are rapidly changing the tech industry.", "summary": "AI advancements"},
-        {"text": "Eating a balanced diet is essential for maintaining good health and energy levels.", "summary": "balanced diet"},
-        {"text": "The latest smartphone models feature improved cameras and faster processors.", "summary": "smartphone features"},
-        {"text": "Taking a walk in the park can be a great way to relieve stress and enjoy nature.", "summary": "stress relief"},
-        {"text": "The new movie release has received rave reviews for its engaging storyline and visual effects.", "summary": "movie reviews"},
-        {"text": "Regular exercise helps in managing weight and improving cardiovascular health.", "summary": "regular exercise"},
-        {"text": "Learning a new language can be both challenging and rewarding, offering new opportunities.", "summary": "learning languages"},
-        {"text": "The annual tech conference will showcase innovations in robotics and artificial intelligence.", "summary": "tech conference"},
-        {"text": "Gardening can be a relaxing hobby and a way to grow fresh vegetables and flowers.", "summary": "gardening benefits"},
-        {"text": "Online shopping offers convenience and a wide range of products at competitive prices.", "summary": "online shopping"},
-        {"text": "Reading books can enhance knowledge, improve focus, and provide entertainment.", "summary": "benefits of reading"},
-        {"text": "Traveling to new destinations allows you to experience different cultures and cuisines.", "summary": "travel experiences"},
-        {"text": "Meditation and mindfulness practices can help improve mental clarity and reduce anxiety.", "summary": "mindfulness benefits"},
-        {"text": "Starting a new hobby can be a great way to meet new people and develop new skills.", "summary": "starting hobbies"},
-        {"text":"Postr rewrite 2024 - Postr was rewritten in solid.js because the old codebase written in next became clunky and unusable", "summary":"postr rewrite"},
-        {"text": "Sustainable living practices are crucial for reducing our environmental impact.", "summary": "sustainable living"},
-        {"text": "High-speed internet access is essential for remote work and online education.", "summary": "internet access"},
-        {"text": "Cooking at home can be healthier and more cost-effective compared to eating out.", "summary": "cooking at home"},
-        {"text": "Investing in the stock market can provide financial growth opportunities over time.", "summary": "stock market investing"},
-        {"text": "Using public transportation can reduce traffic congestion and environmental pollution.", "summary": "public transportation"},
-        {"text": "Home improvement projects can increase property value and enhance living spaces.", "summary": "home improvement"},
-        {"text": "Social media platforms offer a way to connect with friends and share experiences.", "summary": "social media"},
-        {"text": "Music therapy can be an effective method for managing stress and improving mood.", "summary": "music therapy"},
-        {"text": "Exercise routines can vary from cardio to strength training, each with unique benefits.", "summary": "exercise routines"},
-        {"text": "Volunteering is a way to contribute to the community and gain personal satisfaction.", "summary": "volunteering benefits"},
-        {"text": "Photography can capture memories and provide a creative outlet for artistic expression.", "summary": "photography"},
-        {"text": "DIY crafts can be a fun and creative way to spend your free time.", "summary": "DIY crafts"},
-        {"text": "Healthy sleep habits are important for overall well-being and daily functioning.", "summary": "healthy sleep"},
-        {"text": "Smart home technology can improve convenience and energy efficiency.", "summary": "smart home tech"},
-        {"text": "Participating in sports can improve physical fitness and foster teamwork skills.", "summary": "sports participation"},
-        {"text": "Caring for pets can bring joy and companionship to your life.", "summary": "pet care"},
-        {"text": "Financial planning and budgeting are key to managing personal finances effectively.", "summary": "financial planning"},
-        {"text": "Attending educational workshops can provide valuable learning opportunities.", "summary": "educational workshops"},
-        {"text": "Art exhibitions showcase creativity and offer a cultural experience.", "summary": "art exhibitions"},
-        {"text": "Healthy eating habits can improve overall health and prevent chronic diseases.", "summary": "healthy eating"},
-        {"text": "Crafting handmade gifts adds a personal touch and can be more meaningful.", "summary": "handmade gifts"},
-        {"text": "Learning to code opens up career opportunities in the tech industry.", "summary": "learning to code"},
-        {"text": "Participating in community events helps build connections and support local causes.", "summary": "community events"},
-        {"text": "Personal development books can provide guidance and inspiration for self-improvement.", "summary": "personal development"},
-        {"text": "Staying hydrated is crucial for maintaining good health and bodily functions.", "summary": "hydration"},
-        {"text": "Attending concerts and live performances can be an exciting way to enjoy music.", "summary": "live performances"},
-        {"text": "Exploring different cuisines can be a delightful culinary adventure.", "summary": "exploring cuisines"},
-        {"text": "Digital marketing strategies can help businesses reach a larger audience online.", "summary": "digital marketing"},
-        {"text": "Investing in renewable energy sources supports environmental sustainability.", "summary": "renewable energy"},
-        {"text": "Effective communication skills are essential for successful personal and professional relationships.", "summary": "communication skills"},
-        {"text": "Learning about history can provide insight into different cultures and societies.", "summary": "history"},
-        {"text": "Developing problem-solving skills can enhance decision-making abilities.", "summary": "problem-solving skills"},
-        {"text": "Maintaining work-life balance is important for overall health and job satisfaction.", "summary": "work-life balance"},
-        {"text": "Exploring nature can be both refreshing and educational.", "summary": "exploring nature"},
-        {"text": "Building strong relationships requires effort, trust, and effective communication.", "summary": "strong relationships"},
-        {"text": "Using ergonomic furniture can improve comfort and reduce physical strain.", "summary": "ergonomic furniture"},
-        {"text": "Engaging in creative writing can be a therapeutic and enjoyable activity.", "summary": "creative writing"},
-        {"text": "Participating in online courses can offer flexible learning options.", "summary": "online courses"},
-        {"text": "Effective time management can increase productivity and reduce stress.", "summary": "time management"},
-        {"text": "Understanding basic first aid skills can be valuable in emergency situations.", "summary": "first aid skills"},
-        {"text": "Regular dental check-ups are important for maintaining oral health.", "summary": "dental health"},
-        {"text": "Exploring new hobbies can be a great way to discover hidden talents and interests.", "summary": "discovering hobbies"},
-        {"text": "Practicing mindfulness can help improve focus and emotional regulation.", "summary": "mindfulness"},
-        {"text": "Networking with professionals can create new career opportunities and connections.", "summary": "networking"},
-        {"text": "Investing in personal growth can lead to greater fulfillment and success.", "summary": "personal growth"},
-        {"text": "Maintaining a clean and organized workspace can boost productivity.", "summary": "organized workspace"},
-        {"text": "Participating in fitness classes can be a fun way to stay active and motivated.", "summary": "fitness classes"},
-        {"text": "Understanding different cultural practices can broaden your perspective and enhance empathy.", "summary": "cultural understanding"},
-        {"text": "Practicing good posture can help prevent back and neck pain.", "summary": "good posture"},
-        {"text": "Traveling by train can offer a scenic and relaxing way to see new places.", "summary": "train travel"},
-        {"text": "Exploring career options can help you find a path that aligns with your interests and skills.", "summary": "career exploration"},
-        {"text": "Attending workshops on public speaking can enhance your presentation skills.", "summary": "public speaking"},
-        {"text": "Staying informed about current events can help you understand global issues and trends.", "summary": "current events"},
-        {"text": "Engaging in team-building activities can strengthen group dynamics and collaboration.", "summary": "team-building"},
-        {"text": "Maintaining a positive mindset can help you overcome challenges and achieve goals.", "summary": "positive mindset"},
-        {"text": "Using productivity tools can help you stay organized and manage tasks effectively.", "summary": "productivity tools"},
-        {"text": "Exploring new technologies can lead to innovative solutions and advancements.", "summary": "new technologies"},
-        {"text": "Developing financial literacy can improve your ability to manage and grow wealth.", "summary": "financial literacy"},
-        {"text": "Reading scientific journals can keep you updated on the latest research and discoveries.", "summary": "scientific research"},
-        {"text": "Attending cultural festivals can provide a rich and diverse experience.", "summary": "cultural festivals"},
-        {"text": "Building resilience can help you bounce back from setbacks and challenges.", "summary": "resilience"},
-        {"text": "Understanding psychological principles can improve self-awareness and interpersonal relationships.", "summary": "psychological principles"},
-        {"text": "Participating in debate clubs can enhance your critical thinking and argumentation skills.", "summary": "debate clubs"},
-        {"text": "Exploring artistic expressions can foster creativity and self-discovery.", "summary": "artistic expressions"},
-        {"text": "Volunteering at animal shelters can provide fulfillment and support animal welfare.", "summary": "animal shelters"},
-        {"text": "Practicing relaxation techniques can help manage stress and improve well-being.", "summary": "relaxation techniques"},
-        {"text": "Maintaining a balanced work schedule can prevent burnout and promote well-being.", "summary": "balanced work schedule"},
-        {"text": "Learning about different political systems can provide insight into global governance.", "summary": "political systems"},
-        {"text": "Engaging in community service can make a positive impact and strengthen local bonds.", "summary": "community service"},
-        {"text": "Understanding basic coding principles can open up various career opportunities in tech.", "summary": "basic coding principles"},
-        {"text": "Attending wellness retreats can offer relaxation and rejuvenation.", "summary": "wellness retreats"},
-        {"text": "Participating in environmental conservation efforts can contribute to a healthier planet.", "summary": "environmental conservation"},
-        {"text": "Learning about nutrition can improve your dietary choices and overall health.", "summary": "nutrition education"},
-        {"text": "Exploring various forms of exercise can help you find activities that you enjoy.", "summary": "exercise forms"},
-        {"text": "Staying updated on technological trends can help you adapt to changes in the industry.", "summary": "technological trends"},
-        {"text": "Understanding market trends can guide investment and business decisions.", "summary": "market trends"},
-        {"text": "Joining book clubs can provide opportunities for reading and discussing literature.", "summary": "book clubs"},
-        {"text": "Engaging in creative hobbies can be a source of joy and personal fulfillment.", "summary": "creative hobbies"},
-        {"text": "Exploring different cuisines can expand your culinary horizons and enhance your cooking skills.", "summary": "culinary exploration"},
-        {"text": "Practicing gratitude can improve mental health and overall happiness.", "summary": "practicing gratitude"},
-        {"text": "Taking online courses can provide flexibility and access to a wide range of subjects.", "summary": "online learning"},
-        {"text": "Building strong friendships can enhance your social support network and well-being.", "summary": "strong friendships"},
-        {"text": "Exploring different career paths can help you find a fulfilling profession.", "summary": "career paths"},
-        {"text": "Engaging in mindfulness practices can improve focus and reduce stress.", "summary": "mindfulness"},
-        {"text": "Attending tech meetups can provide networking opportunities and insights into industry trends.", "summary": "tech meetups"},
-        {"text": "Understanding consumer behavior can help businesses tailor their marketing strategies.", "summary": "consumer behavior"},
-        {"text": "Participating in fitness challenges can be a fun way to stay motivated and achieve fitness goals.", "summary": "fitness challenges"},
-        {"text": "Exploring historical landmarks can offer educational and cultural experiences.", "summary": "historical landmarks"},
-        {"text": "Learning to play a musical instrument can be a rewarding and enriching experience.", "summary": "playing instruments"},
-        {"text": "Understanding environmental issues can foster awareness and encourage sustainable practices.", "summary": "environmental issues"},
-        {"text": "Engaging in personal reflection can lead to self-discovery and growth.", "summary": "personal reflection"},
-        {"text": "Building effective leadership skills can enhance your ability to guide and inspire others.", "summary": "leadership skills"},
-        {"text": "Attending workshops on time management can improve productivity and efficiency.", "summary": "time management workshops"},
-        {"text": "Exploring local history can provide insights into the development and culture of your area.", "summary": "local history"},
-        {"text": "Engaging in creative projects can boost creativity and provide a sense of accomplishment.", "summary": "creative projects"},
-        {"text": "Understanding different financial instruments can help with effective investment planning.", "summary": "financial instruments"},
-        {"text": "Attending motivational seminars can provide inspiration and practical advice for personal success.", "summary": "motivational seminars"},
-        {"text":"quick brown fox learns to jump", "summary":"brown fox"},
-        {"text":"postr", "summary":"stating something about the postr app"}
+        { "text": "Just finished my morning coffee ☕️ Ready to tackle the day!", "summary": "morning motivation" },
+        { "text": "This view is unreal 😍 #sunset", "summary": "sharing sunset photo" },
+        { "text": "Does anyone have book recommendations for summer reading?", "summary": "asking for book recs" },
+        { "text": "Monday mood: trying to get my life together 🤦‍♀️", "summary": "monday mood" },
+        { "text": "Check out our new product launch happening tomorrow!", "summary": "product announcement" },
+        { "text": "Feeling grateful for small wins today. 💪", "summary": "gratitude post" },
+        { "text": "When the WiFi drops during a meeting... 🙃", "summary": "wifi meme" },
+        { "text": "What’s your go-to comfort food?", "summary": "asking about comfort food" },
+        { "text": "Throwback to last year’s vacation! 🏖️", "summary": "throwback travel" },
+        { "text": "New blog post is up! Link in bio.", "summary": "blog promotion" },
+        { "text": "Can’t believe it’s already July. Where did the time go?", "summary": "time flies" },
+        { "text": "This puppy made my day 🐶", "summary": "cute puppy post" },
+        { "text": "Poll: Do you prefer working from home or the office?", "summary": "work preference poll" },
+        { "text": "So ready for the weekend! 🎉", "summary": "weekend plans" },
+        { "text": "Starting my fitness journey today 💪 Wish me luck!", "summary": "fitness journey" },
+        { "text": "Coffee first, adulting second.", "summary": "coffee meme" },
+        { "text": "Here’s a sneak peek of our upcoming feature 👀", "summary": "product teaser" },
+        { "text": "Anyone else obsessed with true crime podcasts?", "summary": "true crime fan" },
+        { "text": "This song has been on repeat all day 🎶", "summary": "sharing music" },
+        { "text": "Rainy days call for Netflix and chill. ☔️", "summary": "rainy day plans" },
+        { "text": "New recipe: easy 15-min pasta 🍝", "summary": "sharing recipe" },
+        { "text": "Manifesting good vibes only ✨", "summary": "positive vibes" },
+        { "text": "Who remembers these? 😂 #nostalgia", "summary": "nostalgia post" },
+        { "text": "Working on some exciting updates, stay tuned!", "summary": "update teaser" },
+        { "text": "This meme sums up my life rn 😂", "summary": "funny meme" },
+        { "text": "Finally hit 1k followers! Thank you!!", "summary": "milestone celebration" },
+        { "text": "Just started a new book 📚", "summary": "reading update" },
+        { "text": "How do you stay productive working from home?", "summary": "productivity tips" },
+        { "text": "Can’t wait for the new season to drop! 📺", "summary": "tv show hype" },
+        { "text": "Best thing I bought this month 🔥", "summary": "product recommendation" },
+        { "text": "Good morning! What’s everyone up to today?", "summary": "morning check-in" },
+        { "text": "Weekend getaway starts now! ✈️", "summary": "travel plans" },
+        { "text": "Life lately 📸", "summary": "life update" },
+        { "text": "Late night thoughts...", "summary": "late night post" },
+        { "text": "New tattoo, who dis? 😎", "summary": "new tattoo" },
+        { "text": "Just baked these cookies 🍪", "summary": "baking post" },
+        { "text": "Self-care Sunday 🧖‍♀️", "summary": "self-care" },
+        { "text": "Today’s outfit vibes ✨", "summary": "ootd" },
+        { "text": "Birthday week starts now! 🎂", "summary": "birthday post" },
+        { "text": "Started journaling again 📝", "summary": "journaling" },
+        { "text": "What’s the best way to unwind after work?", "summary": "relaxation tips" },
+        { "text": "Trying out a new hobby 🎨", "summary": "new hobby" },
+        { "text": "I need vacation ideas! Drop yours below.", "summary": "asking for vacation ideas" },
+        { "text": "Anyone else drink 3+ cups of coffee daily? ☕️", "summary": "coffee addiction" },
+        { "text": "Current mood: sleepy 💤", "summary": "sleepy mood" },
+        { "text": "Random act of kindness today 💙", "summary": "kindness" },
+        { "text": "Back to the grind.", "summary": "work hustle" },
+        { "text": "New hair, who dis? 💇‍♀️", "summary": "new hairstyle" },
+        { "text": "Throwing it back to good times. 📷", "summary": "throwback memories" },
+        { "text": "Made it to Friday, barely. 😂", "summary": "friday mood" },
+        { "text": "Daily reminder: drink your water! 💧", "summary": "hydration reminder" },
+        { "text": "Game night with the crew 🎲", "summary": "game night" },
+        { "text": "Today’s vibe: cozy and chill.", "summary": "cozy mood" },
+        { "text": "Trying a new workout routine today 🏋️", "summary": "new workout" },
+        { "text": "When in doubt, nap it out.", "summary": "nap meme" },
+        { "text": "Craving sushi so bad 🍣", "summary": "sushi craving" },
+        { "text": "Could use a beach day right now 🏝️", "summary": "beach mood" },
+        { "text": "So proud of this little win today 👏", "summary": "small win" },
+        { "text": "Mood: blasting old school hits 🎧", "summary": "music mood" },
+        { "text": "It’s the little things ✨", "summary": "appreciating small things" },
+        { "text": "Currently obsessed with this show 📺", "summary": "tv show binge" },
+        { "text": "Does pineapple belong on pizza? 🍍🍕", "summary": "pizza debate" },
+        { "text": "Love this community ❤️", "summary": "community love" },
+        { "text": "The struggle is real 😂", "summary": "relatable struggle" },
+        { "text": "New day, same hustle.", "summary": "hustle motivation" },
+        { "text": "Early morning run done! 🏃‍♀️", "summary": "morning run" },
+        { "text": "This filter tho 😂", "summary": "filter fun" },
+        { "text": "Pets make everything better 🐱🐶", "summary": "pet love" },
+        { "text": "Trying to adult but failing miserably.", "summary": "adulting struggle" },
+        { "text": "Life hack: take breaks.", "summary": "life hack" },
+        { "text": "Date night vibes 💕", "summary": "date night" },
+        { "text": "Sharing some Monday motivation 💪", "summary": "monday motivation" },
+        { "text": "Can we normalize naps at work?", "summary": "workplace naps" },
+        { "text": "Thankful for good friends 🫶", "summary": "friend appreciation" },
+        { "text": "Feeling cute, might delete later.", "summary": "selfie" },
+        { "text": "Rainy day playlist on repeat.", "summary": "music share" },
+        { "text": "Today’s goal: survive.", "summary": "daily goal" },
+        { "text": "Life’s too short for bad vibes.", "summary": "good vibes only" },
+        { "text": "So many emails, so little motivation.", "summary": "work email rant" },
+        { "text": "New vlog is live! 🎥", "summary": "vlog post" },
+        { "text": "Trying to stay positive.", "summary": "positivity" },
+        { "text": "Weekend mood: pajamas all day.", "summary": "weekend chill" },
+        { "text": "Just because. 💐", "summary": "random post" },
+        { "text": "Mondays should be optional.", "summary": "monday rant" },
+        { "text": "What’s your favorite quote?", "summary": "quote question" },
+        { "text": "Could use a nap right now.", "summary": "nap mood" },
+        { "text": "Best part of today: coffee.", "summary": "coffee love" },
+        { "text": "Stay weird.", "summary": "quirky post" },
+        { "text": "Making moves, silently.", "summary": "silent hustle" },
+        { "text": "Adulting is hard.", "summary": "adulting rant" },
+        { "text": "What’s everyone watching lately?", "summary": "tv question" },
+        { "text": "Here’s to growth 🌱", "summary": "growth mindset" },
+        { "text": "Sleep? Never heard of her.", "summary": "sleep joke" },
+        { "text": "Trying to read more this month.", "summary": "reading goal" },
+        { "text": "Blessed & stressed.", "summary": "life update" },
+        { "text": "What’s your go-to productivity hack?", "summary": "productivity tips" },
+        { "text": "eee glock ", "summary": "unproductive" },
+        { "text": "Just voted! Every voice counts. 🗳️ #ElectionDay", "summary": "civic engagement" },
+        { "text": "Can’t wait to try this new vegan recipe! 🌱", "summary": "vegan food" },
+        { "text": "Monday blues hitting hard today...", "summary": "monday mood" },
+        { "text": "Throwback to the best concert ever 🎤🎶", "summary": "concert memories" },
+        { "text": "Feeling anxious about the future. Anyone else?", "summary": "anxiety" },
+        { "text": "Tips for better time management? Drop yours below!", "summary": "asking for tips" },
+        { "text": "Celebrating small wins today! 🎉 #progress", "summary": "celebration" },
+        { "text": "New podcast episode just dropped! Tune in 🎧", "summary": "podcast promotion" },
+        { "text": "Stuck in traffic... send help! 🚗", "summary": "commute struggles" },
+        { "text": "Trying to unplug for the weekend. Phone off! 📵", "summary": "digital detox" },
+        { "text": "Here’s my workout playlist, what’s yours?", "summary": "music share" },
+        { "text": "Can anyone recommend a good therapist?", "summary": "mental health" },
+        { "text": "Today’s office snack: homemade granola bars 🥣", "summary": "food post" },
+        { "text": "Meetup this Friday! Who’s coming?", "summary": "event announcement" },
+        { "text": "Just adopted a puppy! Meet Max 🐕", "summary": "pet adoption" },
+        { "text": "Why is adulting so hard?", "summary": "adulting struggle" },
+        { "text": "Celebrating pride month with love and support 🌈", "summary": "pride month" },
+        { "text": "Best way to stay motivated while working remotely?", "summary": "work motivation" },
+        { "text": "Got my vaccine today 💉 feeling relieved!", "summary": "health update" },
+        { "text": "Working on my side hustle grind.", "summary": "hustle" },
+        { "text": "Need a vacation ASAP. Suggestions?", "summary": "vacation ideas" },
+        { "text": "Just finished watching the finale, what a twist!", "summary": "tv show finale" },
+        { "text": "What’s the best self-care routine?", "summary": "self-care" },
+        { "text": "Sharing my latest artwork! 🎨", "summary": "art share" },
+        { "text": "Trying meditation for the first time. Tips?", "summary": "meditation" },
+        { "text": "Feeling overwhelmed, need a break.", "summary": "stress" },
+        { "text": "Who else loves spontaneous road trips?", "summary": "road trips" },
+        { "text": "Celebrating my birthday with family 🎂", "summary": "birthday celebration" },
+        { "text": "Here’s to new beginnings!", "summary": "new beginnings" },
+        { "text": "Update: The server will be down for maintenance at midnight.", "summary": "system update" },
+        { "text": "Reminder: Meeting rescheduled to 3 PM.", "summary": "meeting reminder" },
+        { "text": "What’s everyone’s weekend plans?", "summary": "weekend plans" },
+        { "text": "ICYMI: Here’s a recap of today’s news.", "summary": "news recap" },
+        { "text": "Is anyone else struggling with motivation today?", "summary": "motivation struggles" },
+        { "text": "CNN just released a new documentary series.", "summary": "media update" }
     ]
-} 
- 
+
+}
+
 // Define sigmoid and its derivative
-function sigmoid(x) {
-    return 1 / (1 + Math.exp(-x));
+// Enhanced text processing and neural network implementation
+function extractHashtags(text: string): string[] {
+    const hashtagRegex = /#(\w+)/g;
+    const matches = text.match(hashtagRegex);
+    return matches ? matches.map(tag => tag.slice(1).toLowerCase()) : [];
+}
+// Improved text preprocessing with stemming and stopword removal
+function preprocessText(text: string): string[] {
+    const stopWords = new Set(['the', 'and', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of']);
+
+    // Simple stemmer (consider using a library like natural for production)
+    const stem = (word: string) => {
+        if (word.length > 4) {
+            if (word.endsWith('ing')) return word.slice(0, -3);
+            if (word.endsWith('ly')) return word.slice(0, -2);
+            if (word.endsWith('s')) return word.slice(0, -1);
+        }
+        return word;
+    };
+
+    return text ? text.toLowerCase()
+        .split(/\W+/)
+        .filter(word => word.length > 2 && !stopWords.has(word))
+        .map(stem) : [""]
 }
 
-function sigmoidDerivative(x) {
-    return x * (1 - x);
-}
-
-// Neural Network class definition
-class NeuralNetwork {
-    constructor(inputSize, hiddenSize, outputSize) {
-        this.inputSize = inputSize;
-        this.hiddenSize = hiddenSize;
-        this.outputSize = outputSize;
-
-        // Initialize weights
-        this.weights1 = Array.from({ length: this.inputSize * this.hiddenSize }, () => Math.random());
-        this.weights2 = Array.from({ length: this.hiddenSize * this.outputSize }, () => Math.random());
-    }
-
-    forward(input) {
-        this.input = input;
-
-        // Calculate hidden layer values
-        this.hidden = Array.from({ length: this.hiddenSize }, (_, i) =>
-            this.weights1.slice(i * this.inputSize, (i + 1) * this.inputSize).reduce((sum, weight, j) => sum + weight * input[j], 0)
-        ).map(sigmoid);
-
-        // Calculate output layer values
-        this.output = Array.from({ length: this.outputSize }, (_, i) =>
-            this.weights2.slice(i * this.hiddenSize, (i + 1) * this.hiddenSize).reduce((sum, weight, j) => sum + weight * this.hidden[j], 0)
-        ).map(sigmoid);
-
-        return this.output;
-    }
-
-    backward(target) {
-        // Calculate output layer error and gradient
-        this.outputError = this.output.map((value, i) => target[i] - value);
-        this.outputGradient = this.output.map((value, i) => this.outputError[i] * sigmoidDerivative(value));
-
-        // Calculate hidden layer error and gradient
-        this.hiddenError = Array.from({ length: this.hiddenSize }, (_, i) =>
-            this.outputGradient.reduce((sum, grad, j) => sum + this.weights2[j * this.hiddenSize + i] * grad, 0)
-        );
-        this.hiddenGradient = this.hidden.map((value, i) => this.hiddenError[i] * sigmoidDerivative(value));
-
-        // Update weights
-        for (let i = 0; i < this.outputSize; i++) {
-            for (let j = 0; j < this.hiddenSize; j++) {
-                this.weights2[i * this.hiddenSize + j] += this.hidden[j] * this.outputGradient[i];
-            }
-        }
-
-        for (let i = 0; i < this.hiddenSize; i++) {
-            for (let j = 0; j < this.inputSize; j++) {
-                this.weights1[i * this.inputSize + j] += this.input[j] * this.hiddenGradient[i];
-            }
-        }
-    }
-
-    train(input, target) {
-        this.forward(input);
-        this.backward(target);
-    } 
-    trainBatch(inputs, targets) {
-        // Initialize accumulators for gradients
-        const outputGradientSum = Array.from({ length: this.outputSize }, () => 0);
-        const hiddenGradientSum = Array.from({ length: this.hiddenSize }, () => 0);
-
-        const weights2Delta = Array.from({ length: this.hiddenSize * this.outputSize }, () => 0);
-        const weights1Delta = Array.from({ length: this.inputSize * this.hiddenSize }, () => 0);
-
-        // Iterate over each example in the batch
-        inputs.forEach((input, index) => {
-            const target = targets[index];
-
-            // Forward pass
-            this.forward(input);
-
-            // Calculate output layer error and gradient
-            const outputError = this.output.map((value, i) => target[i] - value);
-            const outputGradient = this.output.map((value, i) => outputError[i] * sigmoidDerivative(value));
-
-            // Calculate hidden layer error and gradient
-            const hiddenError = Array.from({ length: this.hiddenSize }, (_, i) =>
-                outputGradient.reduce((sum, grad, j) => sum + this.weights2[j * this.hiddenSize + i] * grad, 0)
-            );
-            const hiddenGradient = this.hidden.map((value, i) => hiddenError[i] * sigmoidDerivative(value));
-
-            // Accumulate gradients
-            for (let i = 0; i < this.outputSize; i++) {
-                outputGradientSum[i] += outputGradient[i];
-                for (let j = 0; j < this.hiddenSize; j++) {
-                    weights2Delta[i * this.hiddenSize + j] += this.hidden[j] * outputGradient[i];
-                }
-            }
-
-            for (let i = 0; i < this.hiddenSize; i++) {
-                hiddenGradientSum[i] += hiddenGradient[i];
-                for (let j = 0; j < this.inputSize; j++) {
-                    weights1Delta[i * this.inputSize + j] += this.input[j] * hiddenGradient[i];
-                }
-            }
-        });
-
-        // Average gradients and update weights
-        const batchSize = inputs.length;
-        for (let i = 0; i < this.outputSize; i++) {
-            for (let j = 0; j < this.hiddenSize; j++) {
-                this.weights2[i * this.hiddenSize + j] += weights2Delta[i * this.hiddenSize + j] / batchSize;
-            }
-        }
-
-        for (let i = 0; i < this.hiddenSize; i++) {
-            for (let j = 0; j < this.inputSize; j++) {
-                this.weights1[i * this.inputSize + j] += weights1Delta[i * this.inputSize + j] / batchSize;
-            }
-        }
-    }
-
-}
-
-// Convert text to vector based on vocabulary
-function textToVector(text, vocabulary) {
-    const words = text.split(/\W+/);
-    const vector = Array.from({ length: vocabulary.length }, () => 0);
+// Enhanced text to vector with TF-IDF weighting
+function textToVector(text: string, vocabulary: string[], idfWeights?: number[]): number[] {
+    const words = preprocessText(text);
+    const wordCount: Record<string, number> = {};
     words.forEach(word => {
-        const index = vocabulary.indexOf(word.toLowerCase());
-        if (index !== -1) vector[index] += 1;
+        if (vocabulary.includes(word)) {
+            wordCount[word] = (wordCount[word] || 0) + 1;
+        }
+    }
+    );
+    const vector = Array.from({ length: vocabulary.length }, () => 0);
+    vocabulary.forEach((word, index) => {
+        const tf = wordCount[word] || 0;
+        const idf = idfWeights ? idfWeights[index] : 1; // Use IDF if provided
+        vector[index] = tf * idf;
     });
     return vector;
 }
 
-// Convert summary to target vector
-function summaryToTarget(summary, summaryVocabulary) {
-    const vector = Array.from({ length: summaryVocabulary.length }, () => 0);
-    const index = summaryVocabulary.indexOf(summary.toLowerCase());
-    if (index !== -1) vector[index] = 1;
-    return vector;
+// Calculate IDF weights for vocabulary
+function calculateIDFWeights(vocabulary: string[], documents: string[]): number[] {
+    const docCount = documents.length;
+    return vocabulary.map(word => {
+        const docsWithWord = documents.filter(doc =>
+            preprocessText(doc).includes(word)
+        ).length;
+        return Math.log((docCount + 1) / (docsWithWord + 1)) + 1;
+    });
 }
 
-function generateHashtext(text) { 
-     const words = text.split(" ");
-     const hashTags = words.filter(word => word.startsWith("#"));
-     // now makeUp some hash tags
-     const hashTagCount = Math.floor(Math.random() * 3) + 1;
-     for (let i = 0; i < hashTagCount; i++) {
-         const word = words[Math.floor(Math.random() * words.length)];
-         hashTags.push("#" + word);
-     }
-     return hashTags;
+// Enhanced summary to target with multi-label support
+function summaryToTarget(summary: string, summaryVocabulary: string[]): number[] {
+    const targets = Array.from({ length: summaryVocabulary.length }, () => 0);
+    const summaryTerms = preprocessText(summary);
+    summaryTerms.forEach(term => {
+        const index = summaryVocabulary.indexOf(term);
+        if (index !== -1) targets[index] = 1;
+    });
+    return targets;
 }
-// Create vocabulary and summary vocabulary
+
+// Enhanced hashtag generation with relevance scoring
+function generateHashtags(text: string, numTags = 3): string[] {
+    const words = preprocessText(text);
+    const wordScores: Record<string, number> = {};
+
+    // Score words by frequency and position
+    words.forEach((word, index) => {
+        wordScores[word] = (wordScores[word] || 0) + 1 + (1 / (index + 1));
+    });
+
+    // Sort by score and take top N
+    return Object.entries(wordScores)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, numTags)
+        .map(([word]) => `#${word}`);
+}
+
+// Enhanced Neural Network with dropout and momentum
+class EnhancedNeuralNetwork {
+    private inputSize: number;
+    private hiddenSize: number;
+    private outputSize: number;
+    private learningRate: number;
+    private momentum: number;
+    private dropoutRate: number;
+
+    // Weights and biases
+    private weights1: number[][];
+    private weights2: number[][];
+    private bias1: number[];
+    private bias2: number[];
+
+    // Momentum buffers
+    private prevDeltaWeights1: number[][];
+    private prevDeltaWeights2: number[][];
+    private prevDeltaBias1: number[];
+    private prevDeltaBias2: number[];
+
+    constructor(
+        inputSize: number,
+        hiddenSize: number,
+        outputSize: number,
+        learningRate = 0.01,
+        momentum = 0.9,
+        dropoutRate = 0.2
+    ) {
+        this.inputSize = inputSize;
+        this.hiddenSize = hiddenSize;
+        this.outputSize = outputSize;
+        this.learningRate = learningRate;
+        this.momentum = momentum;
+        this.dropoutRate = dropoutRate;
+
+        // Initialize weights with He initialization
+        this.weights1 = Array.from({ length: hiddenSize }, () =>
+            Array.from({ length: inputSize }, () => (Math.random() * Math.sqrt(2 / inputSize)))
+        );
+        this.weights2 = Array.from({ length: outputSize }, () =>
+            Array.from({ length: hiddenSize }, () => (Math.random() * Math.sqrt(2 / hiddenSize)))
+        );
+
+        // Initialize biases
+        this.bias1 = Array(hiddenSize).fill(0.1);
+        this.bias2 = Array(outputSize).fill(0.1);
+
+        // Initialize momentum buffers
+        this.prevDeltaWeights1 = this.weights1.map(row => row.map(() => 0));
+        this.prevDeltaWeights2 = this.weights2.map(row => row.map(() => 0));
+        this.prevDeltaBias1 = Array(hiddenSize).fill(0);
+        this.prevDeltaBias2 = Array(outputSize).fill(0);
+    }
+
+    private sigmoid(x: number): number {
+        return 1 / (1 + Math.exp(-x));
+    }
+
+    private relu(x: number): number {
+        return Math.max(0, x);
+    }
+
+    private softmax(values: number[]): number[] {
+        const max = Math.max(...values);
+        const exps = values.map(x => Math.exp(x - max));
+        const sum = exps.reduce((a, b) => a + b, 0);
+        return exps.map(x => x / sum);
+    }
+
+    forward(input: number[], training = false): number[] {
+        // Input to hidden
+        const hidden = Array(this.hiddenSize).fill(0);
+        for (let i = 0; i < this.hiddenSize; i++) {
+            for (let j = 0; j < this.inputSize; j++) {
+                hidden[i] += input[j] * this.weights1[i][j];
+            }
+            hidden[i] += this.bias1[i];
+            hidden[i] = this.relu(hidden[i]);
+
+            // Apply dropout during training
+            if (training && Math.random() < this.dropoutRate) {
+                hidden[i] = 0;
+            }
+        }
+
+        // Hidden to output
+        const output = Array(this.outputSize).fill(0);
+        for (let i = 0; i < this.outputSize; i++) {
+            for (let j = 0; j < this.hiddenSize; j++) {
+                output[i] += hidden[j] * this.weights2[i][j];
+            }
+            output[i] += this.bias2[i];
+        }
+
+        return this.softmax(output);
+    }
+
+    trainBatch(inputs: number[][], targets: number[][]) {
+        // Initialize gradients
+        const deltaWeights2 = this.weights2.map(row => row.map(() => 0));
+        const deltaBias2 = Array(this.outputSize).fill(0);
+        const deltaWeights1 = this.weights1.map(row => row.map(() => 0));
+        const deltaBias1 = Array(this.hiddenSize).fill(0);
+
+        // Process each sample in the batch
+        for (let n = 0; n < inputs.length; n++) {
+            const input = inputs[n];
+            const target = targets[n];
+
+            // Forward pass
+            const hidden = Array(this.hiddenSize).fill(0);
+            const hiddenPreActivation = Array(this.hiddenSize).fill(0);
+
+            for (let i = 0; i < this.hiddenSize; i++) {
+                for (let j = 0; j < this.inputSize; j++) {
+                    hiddenPreActivation[i] += input[j] * this.weights1[i][j];
+                }
+                hiddenPreActivation[i] += this.bias1[i];
+                hidden[i] = this.relu(hiddenPreActivation[i]);
+
+                // Apply dropout mask
+                if (Math.random() < this.dropoutRate) {
+                    hidden[i] = 0;
+                }
+            }
+
+            const output = Array(this.outputSize).fill(0);
+            for (let i = 0; i < this.outputSize; i++) {
+                for (let j = 0; j < this.hiddenSize; j++) {
+                    output[i] += hidden[j] * this.weights2[i][j];
+                }
+                output[i] += this.bias2[i];
+            }
+            const outputActivation = this.softmax(output);
+
+            // Backward pass
+            const outputError = outputActivation.map((o, i) => o - target[i]);
+
+            // Hidden layer error
+            const hiddenError = Array(this.hiddenSize).fill(0);
+            for (let j = 0; j < this.hiddenSize; j++) {
+                for (let k = 0; k < this.outputSize; k++) {
+                    hiddenError[j] += outputError[k] * this.weights2[k][j];
+                }
+                hiddenError[j] *= hiddenPreActivation[j] > 0 ? 1 : 0; // ReLU derivative
+            }
+
+            // Update weight and bias gradients
+            for (let k = 0; k < this.outputSize; k++) {
+                for (let j = 0; j < this.hiddenSize; j++) {
+                    deltaWeights2[k][j] += outputError[k] * hidden[j];
+                }
+                deltaBias2[k] += outputError[k];
+            }
+
+            for (let j = 0; j < this.hiddenSize; j++) {
+                for (let i = 0; i < this.inputSize; i++) {
+                    deltaWeights1[j][i] += hiddenError[j] * input[i];
+                }
+                deltaBias1[j] += hiddenError[j];
+            }
+        }
+
+        // Apply momentum and update weights
+        const batchSize = inputs.length;
+        for (let k = 0; k < this.outputSize; k++) {
+            for (let j = 0; j < this.hiddenSize; j++) {
+                const delta = deltaWeights2[k][j] / batchSize;
+                const momentumDelta = this.momentum * this.prevDeltaWeights2[k][j];
+                this.weights2[k][j] -= this.learningRate * (delta + momentumDelta);
+                this.prevDeltaWeights2[k][j] = delta;
+            }
+            const delta = deltaBias2[k] / batchSize;
+            const momentumDelta = this.momentum * this.prevDeltaBias2[k];
+            this.bias2[k] -= this.learningRate * (delta + momentumDelta);
+            this.prevDeltaBias2[k] = delta;
+        }
+
+        for (let j = 0; j < this.hiddenSize; j++) {
+            for (let i = 0; i < this.inputSize; i++) {
+                const delta = deltaWeights1[j][i] / batchSize;
+                const momentumDelta = this.momentum * this.prevDeltaWeights1[j][i];
+                this.weights1[j][i] -= this.learningRate * (delta + momentumDelta);
+                this.prevDeltaWeights1[j][i] = delta;
+            }
+            const delta = deltaBias1[j] / batchSize;
+            const momentumDelta = this.momentum * this.prevDeltaBias1[j];
+            this.bias1[j] -= this.learningRate * (delta + momentumDelta);
+            this.prevDeltaBias1[j] = delta;
+        }
+    }
+
+    predict(text: string, vocabulary: string[], idfWeights?: number[]): string {
+        const vector = textToVector(text, vocabulary, idfWeights);
+        const output = this.forward(vector);
+        const maxIndex = output.indexOf(Math.max(...output));
+        return summaryVocabulary[maxIndex];
+    }
+}
+
+/**
+ * Multi-label neural network core
+ * Example assumes:
+ *  - you have input vectors
+ *  - you have multi-label targets
+ *  - output activation: sigmoid
+ *  - loss: binary cross-entropy
+ *  - accuracy: thresholded match
+ */
+
+class SimpleMultiLabelNN {
+    weights: number[][];
+    biases: number[];
+
+    constructor(inputSize: number, outputSize: number) {
+        this.weights = Array.from({ length: outputSize }, () =>
+            Array.from({ length: inputSize }, () => Math.random() - 0.5)
+        );
+        this.biases = Array.from({ length: outputSize }, () => Math.random() - 0.5);
+    }
+
+    private sigmoid(x: number): number {
+        return 1 / (1 + Math.exp(-x));
+    }
+
+    forward(input: number[]): number[] {
+        return this.weights.map((wRow, i) => {
+            const dot = wRow.reduce((sum, w, j) => sum + w * input[j], 0);
+            return this.sigmoid(dot + this.biases[i]);
+        });
+    }
+
+    // Example gradient update with simple SGD
+    train(inputs: number[][], targets: number[][], epochs = 100, lr = 0.01) {
+        for (let epoch = 0; epoch < epochs; epoch++) {
+            let totalLoss = 0;
+            let totalCorrect = 0;
+
+            for (let idx = 0; idx < inputs.length; idx++) {
+                const x = inputs[idx];
+                const y = targets[idx];
+                const preds = this.forward(x);
+
+                // Binary cross-entropy per output
+                const errors = preds.map((p, i) => p - y[i]);
+                const loss = preds.reduce(
+                    (sum, p, i) => sum - (y[i] * Math.log(p + 1e-15) + (1 - y[i]) * Math.log(1 - p + 1e-15)),
+                    0
+                ) / preds.length;
+
+                totalLoss += loss;
+
+                // SGD update
+                for (let i = 0; i < this.weights.length; i++) {
+                    for (let j = 0; j < this.weights[i].length; j++) {
+                        this.weights[i][j] -= lr * errors[i] * x[j];
+                    }
+                    this.biases[i] -= lr * errors[i];
+                }
+
+                // Multi-label correctness: count matches
+                const predictedLabels = preds.map(p => (p >= 0.5 ? 1 : 0));
+                const matches = predictedLabels.filter((v, i) => v === y[i]).length;
+                totalCorrect += matches / y.length;
+            }
+
+            console.log(`Epoch ${epoch + 1}: Loss=${(totalLoss / inputs.length).toFixed(4)}, Acc=${(totalCorrect / inputs.length * 100).toFixed(2)}%`);
+        }
+    }
+}
+
+
+// Create vocabulary and summary vocabulary with enhanced processing
+const documents = trainingData.map(data => data.text);
 const vocabulary = Array.from(new Set(
-    trainingData.flatMap(data => data.text.split(/\W+/).map(word => word.toLowerCase()))
-)) as string[];
+    trainingData.flatMap(data => preprocessText(data.text))
+)).filter(Boolean) as string[];
 
-const summaryVocabulary = Array.from(new Set(trainingData.map(data => data.summary.toLowerCase())));
+const idfWeights = calculateIDFWeights(vocabulary, documents);
 
-// Initialize the neural network
-const neuralNetwork = new NeuralNetwork(vocabulary.length, 10, summaryVocabulary.length); // Adjust hidden size as needed
+const summaryVocabulary = Array.from(new Set(
+    trainingData.flatMap(data => data.summary.toLowerCase().split(/\s*,\s*/))
+)).filter(Boolean) as string[];
+
+// Initialize the enhanced neural network
+const inputSize = vocabulary.length;
+const hiddenSize = Math.max(10, Math.floor(inputSize / 2)); // Dynamic
+const outputSize = summaryVocabulary.length;
+const learningRate = 0.001;
+const momentum = 0.4;
+const dropoutRate = 0.5;
+const neuralNetwork = new SimpleMultiLabelNN(inputSize, outputSize);
+
+
+// Train the model with enhanced data processing
+function trainModel() {
+    const inputVectors = trainingData.map(d => textToVector(d.text, vocabulary, idfWeights));
+    const targetVectors = trainingData.map(d => summaryToTarget(d.summary, summaryVocabulary));
+
+    neuralNetwork.train(inputVectors, targetVectors, 100, learningRate);
+
+    const testText = "postr is a great platform for sharing content";
+    console.log(`\nTesting with: "${testText}"`);
+
+    const prediction = neuralNetwork.forward(textToVector(testText, vocabulary, idfWeights));
+
+    const ACTIVATION_THRESHOLD = 0.5;   // probability cutoff for each label
+    const MIN_CONFIDENCE = 0.4;         // minimum confidence fallback
+
+    const predictedLabels = prediction.map(p => p >= ACTIVATION_THRESHOLD ? 1 : 0);
+    const firedCount = predictedLabels.reduce((sum, val) => sum + val, 0);
+
+    const predictedSummaryText = predictedLabels
+        .map((label, index) => label ? summaryVocabulary[index] : null)
+        .filter(Boolean)
+        .join(', ');
+
+    const maxProb = Math.max(...prediction);
+    console.log(`Raw prediction: ${prediction.map(p => p.toFixed(3)).join(', ')}`);
+    console.log(`Fired labels: ${firedCount}, Max confidence: ${maxProb.toFixed(3)}`);
+
+}
  
-const start = Date.now()
-const batchSize = 32; // Number of samples per batch
-const batchesPerInterval = 100; // Number of batches to process per interval
-const intervalDuration = 5000; // Duration of interval in milliseconds (5 seconds)
 
-let currentBatch = 0;
-const totalBatches = Math.ceil(trainingData.length / batchSize);
 
-const trainInterval = setInterval(() => {
-    let batchesProcessed = 0;
-    while (batchesProcessed < batchesPerInterval && currentBatch < totalBatches) {
-        const start = currentBatch * batchSize;
-        const end = start + batchSize;
-        const batch = trainingData.slice(start, end);
-        const inputs = batch.map(data => textToVector(data.text, vocabulary));
-        const targets = batch.map(data => summaryToTarget(data.summary, summaryVocabulary));
-        neuralNetwork.trainBatch(inputs, targets);
 
-        currentBatch++;
-        batchesProcessed++;
-    }
 
-    if (currentBatch >= totalBatches) {
-        clearInterval(trainInterval);
-        
-        const end = Date.now()
-        console.log(`Nueral Network ✨ Training complete`);
-    }
-}, intervalDuration); 
- 
- 
-
-export  {NeuralNetwork, textToVector, summaryToTarget, vocabulary, summaryVocabulary, neuralNetwork, testData, generateHashtext}
+export {
+    EnhancedNeuralNetwork as NeuralNetwork,
+    textToVector,
+    summaryToTarget,
+    vocabulary,
+    summaryVocabulary,
+    neuralNetwork,
+    generateHashtags as generateHashtext,
+    extractHashtags,
+    preprocessText
+};

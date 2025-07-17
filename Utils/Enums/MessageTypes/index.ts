@@ -6,5 +6,7 @@ export const enum MessageTypes {
     GET = 'get',
     AUTH_ROLL_TOKEN = 'auth_roll_token',
     CREATE_EMBED = 'create_embed',
-    DEEP_SEARCH = 'deep_api_search'
+    DEEP_SEARCH = 'deep_api_search',
+    ONLINE = 'online',
+    NOTIFY = 'notify'
 }
