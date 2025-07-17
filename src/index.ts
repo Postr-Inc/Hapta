@@ -36,11 +36,10 @@ import collectionRoutes from "./routes/collections.ts";
 import actionRoutes from "./routes/actions.ts";
 import utilityRoutes from "./routes/utility.ts";
 import subscriptionRoutes from "./routes/subscriptions.ts";
-import docRoutes from "./routes/docs.ts";
+import docRoutes from "./routes/docs.ts";   
 import metrics from "./routes/metrics.ts";
-import embededRoute from "./routes/embed.tsx";
-import cacheManager from "./routes/cacheManager.ts";
-import { url } from "inspector";
+import embededRoute from "./routes/embed.tsx"; 
+import search from "./routes/search.ts";
 export {
   neuralNetwork,
   summaryToTarget,
@@ -186,14 +185,15 @@ if (!isMainNode) {
   applyGlobalMiddleware(app, config, _AuthHandler, isTokenValid, getCookie);
 
   app.route("/subscriptions", subscriptionRoutes(_AuthHandler, MessageTypes, HttpCodes, ErrorCodes, ErrorMessages, decode, verify, getCookie));
-  app.route("/", docRoutes(config));
+  app.route("/", docRoutes(config)); 
+  app.route("/", search()) 
+  app.route("/", utilityRoutes(cache, rqHandler, EmbedEngine, HttpCodes, ErrorCodes, ErrorMessages));
   app.route("/auth", authRoutes(_AuthHandler, isTokenValid, rqHandler, config));
   app.route("/api/files", fileRoutes(pb, HttpCodes));
   app.route("/collection", collectionRoutes(_AuthHandler, isTokenValid, rqHandler, HttpCodes, ErrorCodes, ErrorMessages));
-  app.route("/actions", actionRoutes(_AuthHandler, isTokenValid, rqHandler, HttpCodes, ErrorCodes, ErrorMessages, decode));
-  app.route("/", utilityRoutes(cache, rqHandler, EmbedEngine, HttpCodes, ErrorCodes, ErrorMessages));
+  app.route("/actions", actionRoutes(_AuthHandler, isTokenValid, rqHandler, HttpCodes, ErrorCodes, ErrorMessages, decode)); 
   app.route("/metrics", metrics(rqHandler.crudManager));
-  app.route("/embed", embededRoute);
+  app.route("/embed", embededRoute); 
 
   if (config.Server.nodeEnabled) {
     const wsUrl = config.Server.MainNode;
