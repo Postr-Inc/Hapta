@@ -21,7 +21,7 @@ yarn add hapta
 
 ## 🚀 Key Features
 
-* ✅ **Authentication via Clover**
+* ✅ **Authentication via Clover or Pocketbase Directly**
   Multi-strategy login (OAuth, password, OTP, MFA) with tenant role/clearance support.
 
 * 🔐 **Context-Based Auth (`ctx.principal`)**
@@ -60,6 +60,7 @@ yarn add hapta
 
 ### 🧩 Set up config
 > hapta-config.json
+- Note: Remove Clover_Tenant_ID if you want to handle login state yourself - disables clover authentication methods
 ```json 
 {
     "port": 8080,
@@ -71,7 +72,7 @@ yarn add hapta
     "Clover_Server_Url":"clover.postlyapp.com",
     "JWT_SECRET":"*",
     "DatabaseUrl":"http://localhost:8080",
-    "ADMIN_EMAIL":"malikwhitterb@gmail.com",
+    "ADMIN_EMAIL":"email@something.com",
     "ADMIN_PASSWORD":""
 }
 
@@ -100,7 +101,7 @@ export default async function POST(ctx: Context, DB: Database) {
   const { type } = ctx.metadata.query as any;
 
   if (type === "oauth") {
-    const result = await ctx.services.Clover.Authenticate({ type: "oauth", ...ctx.metadata.query });
+    const result = await ctx.services.Authenticate({ type: "oauth", ...ctx.metadata.query });
 
     return result.isAuthenticated
       ? ctx.json(result)
