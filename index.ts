@@ -1,4 +1,5 @@
-import Context from "./helpers/HTTP/Request/Context";
+#!/usr/bin/env bun
+import Context, { corsHeaders } from "./helpers/HTTP/Request/Context";
 import { serve, FileSystemRouter, type Serve, type Server } from "bun";
 import { config } from "./src/core/config";
 import Pocketbase from "pocketbase";
@@ -12,7 +13,7 @@ import * as z from "zod";
 import { watch } from "fs";
 import fs from "fs"
 import { pathToFileURL } from "url";
-
+const token_uses = new Map<string, number>()
 // --- Global server and router instances ---
 let server: Server;
 // MODIFIED: Make the router a single, persistent instance
@@ -24,8 +25,8 @@ const router = new FileSystemRouter({
 
 // --- Validation: Ensure required config vars are present ---
 if (!config.Clover_Secret || !config.Clover_Tenant_ID) {
-    console.error("❌ Clover_Secret and Clover_Tenant_ID must be set in your config.");
-    process.exit(1);
+    console.error("Using Basic Auth");
+
 }
 
 if (!config.ADMIN_EMAIL || !config.ADMIN_PASSWORD) {
@@ -33,7 +34,7 @@ if (!config.ADMIN_EMAIL || !config.ADMIN_PASSWORD) {
     process.exit(1);
 }
 
-if(!fs.existsSync(path.join(process.cwd(), "routes"))){
+if (!fs.existsSync(path.join(process.cwd(), "routes"))) {
     console.error("❌ Please create a routes folder and create your first route");
     process.exit(1);
 }
@@ -45,16 +46,19 @@ try {
 } catch (_) { }
 
 // --- Primary Tenant Data ---
-const primaryTenantData = await fetch(`${config.Clover_Server_Url}/tenants/${config.Clover_Tenant_ID}`, {
+var primaryTenantData: any = {};
+if(config.Clover_Tenant_ID){
+primaryTenantData = await fetch(`${config.Clover_Server_Url}/tenants/${config.Clover_Tenant_ID}`, {
     headers: { Authorization_Secret: config.Clover_Secret },
 }).then(async (res) => {
     if (!res.ok) throw new Error(`Failed to fetch primary tenant data: ${res.status} ${res.statusText}`);
     return res.json();
 });
+}
 console.log("✅ Primary tenant data loaded.");
 
 const cache = new Cache();
-const db = new DatabaseService(pb, cache); 
+const db = new DatabaseService(pb, cache);
 // --- Server Configuration Builder ---
 async function createServeConfig(): Promise<Serve> {
     console.log("🛠️ Building server configuration...");
@@ -66,7 +70,7 @@ async function createServeConfig(): Promise<Serve> {
     const schemas = new Map();
     const middlewares = new Map<string, (ctx: Context) => Promise<Response | boolean>>();
 
-    const reimportModule = async (modulePath: string) => { 
+    const reimportModule = async (modulePath: string) => {
         const resolvedPath = path.resolve(modulePath);
         if (require.cache[resolvedPath]) {
             delete require.cache[resolvedPath];
@@ -93,7 +97,7 @@ async function createServeConfig(): Promise<Serve> {
                 const middleware = await reimportModule(middlewarePath);
                 if (middleware.default) middlewares.set(pathname, middleware.default);
             }
-        } catch (e) { 
+        } catch (e) {
             console.error(`❌ Error loading module for route ${pathname}:`, e);
         }
     }
@@ -103,9 +107,11 @@ async function createServeConfig(): Promise<Serve> {
     return {
         port: config.port,
         async fetch(req: Request) {
+            console.log(req.method)
             if (req.method === "OPTIONS") {
+                console.log("ran")
                 return new Response(null, {
-                    status: 204,
+                    status: 200,
                     headers: {
                         "Access-Control-Allow-Origin": config.origin,
                         "Access-Control-Allow-Methods": "OPTIONS, GET, POST, PUT, PATCH, DELETE",
@@ -114,6 +120,7 @@ async function createServeConfig(): Promise<Serve> {
                     },
                 });
             }
+            console.log("ran")
             const url = new URL(req.url);
             const routeMatch = router.match(url.href);
 
@@ -126,7 +133,7 @@ async function createServeConfig(): Promise<Serve> {
             const schema = schemas.get(routeMatch.name);
 
             if (!routeHandler) {
-                return new Response(`Route handler for ${routeMatch.name} not found.`, { status: 404 });
+                return new Response(`Route handler for ${routeMatch.name} not found.`, { status: 404, headers: { ...corsHeaders } });
             }
 
             try {
@@ -143,7 +150,6 @@ async function createServeConfig(): Promise<Serve> {
                     if (result instanceof Response) return result;
                     if (result === false) return new Response("Forbidden", { status: 403 });
                 }
-
                 if (schema) {
                     const validation = {
                         body: schema.body?.safeParse(context.metadata.json),
@@ -152,20 +158,22 @@ async function createServeConfig(): Promise<Serve> {
                     };
                     for (const key of ["body", "query", "headers"] as const) {
                         if (validation[key] && !validation[key]?.success) {
-                            return new Response(JSON.stringify({ success: false, error: validation[key]?.error.flatten() }), { status: 400, headers: { "Content-Type": "application/json" } });
+                            return new Response(JSON.stringify({ success: false, error: validation[key]?.error.flatten() }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } });
                         }
                     }
                 }
 
+                console.log("run")
+
                 return await routeHandler(context, db);
             } catch (err) {
                 console.error(`❌ Error handling ${url.pathname}:`, err);
-                return new Response("Internal Server Error", { status: 500 });
+                return new Response("Internal Server Error", { status: 500, headers: { ...corsHeaders } });
             }
         },
         error(error) {
             console.error("☠️ Uncaught Error:", error);
-            return new Response("Something went wrong!", { status: 500 });
+            return new Response("Something went wrong!", { status: 500, headers: { ...corsHeaders } });
         },
     };
 }
@@ -216,17 +224,17 @@ async function buildRequestContext(req: Request, headers: Headers) {
     const hasToken = headers.has("Authorization")
     var isAuthenticated = false;
     if (hasToken) {
+
         try {
-            jwt.verify(token as string, config.JWT_SECRET)
+
             isAuthenticated = true
         } catch (error) {
             isAuthenticated = false
         }
     }
     const context = {
-        principal: { isAuthenticated },
-        services: {
-            Clover: {
+        principal: { isAuthenticated: isAuthenticated as boolean },
+        services: { 
                 Tenant_ID: primaryTenantData.id,
                 Authorized_Users: primaryTenantData.expand?.Tenant_Groups?.Users || [],
                 Register: async (data: any) => {
@@ -250,82 +258,116 @@ async function buildRequestContext(req: Request, headers: Headers) {
                     return await res.json()
 
                 },
-                Authenticate: async (options) => {
-                    const fetchBody = {
-                        Tenant_Id: primaryTenantData.id,
-                        Secret: config.Clover_Secret,
-                        type: options.type,
-                    };
-
-                    if (options.type === "passwordAuth") {
-                        fetchBody.emailOrUsername = options.emailOrUsername;
-                        fetchBody.password = options.password;
-                    }
-
-                    if (options.type === "oauth") {
-                        fetchBody.code = options.code;
-                        fetchBody.redirectUri = options.redirectUri;
-                        fetchBody.client_secret = config.Clover_Secret
-                        fetchBody.authenticated_id = options.authenticated_id
-                    }
-
-
-                    const authRes = await fetch(`${config.Clover_Server_Url}/oauth/token`, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization_Secret: config.Clover_Secret,
-                            tenantid: config.Clover_Tenant_ID,
-                            "User-Agent": headers.get("User-Agent") || "",
-                        },
-                        body: JSON.stringify(fetchBody),
-                    });
-
-                    if (!authRes.ok) { 
-                        return {
-                            isAuthenticated: false,
-                            error: true,
-                            message: "Authentication failed",
+                Authenticate: async (options: any) => {
+                    if (config.Clover_Tenant_ID) {
+                        const fetchBody = {
+                            Tenant_Id: primaryTenantData.id,
+                            Secret: config.Clover_Secret,
+                            type: options.type,
                         };
+
+                        if (options.type === "passwordAuth") {
+                            fetchBody.emailOrUsername = options.emailOrUsername;
+                            fetchBody.password = options.password;
+                        }
+
+                        if (options.type === "oauth") {
+                            fetchBody.code = options.code;
+                            fetchBody.redirectUri = options.redirectUri;
+                            fetchBody.client_secret = config.Clover_Secret
+                            fetchBody.authenticated_id = options.authenticated_id
+                        }
+
+
+                        const authRes = await fetch(`${config.Clover_Server_Url}/${options.type === "oauth" ? 'oauth/token' : 'auth'}`, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                Authorization_Secret: config.Clover_Secret,
+                                tenantid: config.Clover_Tenant_ID,
+                                "User-Agent": headers.get("User-Agent") || "",
+                            },
+                            body: JSON.stringify(fetchBody),
+                        });
+
+                        if (!authRes.ok) {
+                            return {
+                                isAuthenticated: false,
+                                error: true,
+                                message: "Authentication failed",
+                            };
+                        }
+
+                        const responseJson = await authRes.json();
+                        const record = responseJson.AuthenticatedModal;
+                        record.clover_assigned_id = primaryTenantData.id;
+                        token_uses.set(record.token, 0)
+
+                        record.token = jwt.sign(
+                            {
+                                id: record.id,
+                                clover_assigned_id: record.clover_assigned_id,
+                                Roles: record.Roles,
+                                Group: record.clover_group_assigned_To,
+                                Token_Uses: token_uses.get(token) || 0
+                            },
+                            config.JWT_SECRET,
+                        );
+
+                        record.isAuthenticated = true;
+
+                        return record;
+                    } else {
+                        switch (options.type) {
+                            case "passwordAuth":
+                                if(options.password && options.emailOrUsername){
+                                    try {
+                                    const { record } = await pb.collection("users").authWithPassword(options.emailOrUsername, options.password);
+                                   
+                                    record.token = jwt.sign( {
+                                         id: record.id,
+                                         token_uses: 0 
+                                    }, config.JWT_SECRET)
+                                    token_uses.set(record.token, 0)
+                                    return record
+                                    } catch (error) {
+                                         console.error(error);
+                                        return { isAuthenticated: false, error: true, message: "Authentication failed" };
+                                    }
+                                }
+                        }
                     }
-
-                    const responseJson = await authRes.json();
-                    const record = responseJson.AuthenticatedModal;
-                    record.clover_assigned_id = primaryTenantData.id;
-
-                    record.token = jwt.sign(
-                        {
-                            id: record.id,
-                            clover_assigned_id: record.clover_assigned_id,
-                            Roles: record.Roles,
-                            Group: record.clover_group_assigned_To,
-                        },
-                        config.JWT_SECRET,
-                    );
-
-                    record.isAuthenticated = true;
-
-                    return record;
                 },
-                Verify: async (token) => {
+                Verify: async (token: string) => {
                     try {
                         const payload = jwt.verify(token, config.JWT_SECRET);
+                        if (token_uses.has(token) && token_uses.get(token) >= payload.amount_of_uses) {
+                            // this is basic auth token
+                            throw new Error("token has been used wayy to many times, it is expired")
+                        } else {
+                            token_uses.set(token, Number(token_uses.get(token)) + 1)
+                        }
                         return {
                             isAuthenticated: true,
-                            id: payload.id,
-                            clover_group_assigned_To: payload.Group,
-                            clover_assigned_id: payload.clover_assigned_id,
-                            Roles: payload.Roles,
+                            id: payload.id || crypto.randomUUID(),
+                            clover_group_assigned_To: payload.Group || [],
+                            clover_assigned_id: config.Clover_Tenant_ID ? payload.clover_assigned_id  ?   config.Clover_Tenant_ID : payload.clover_assigned_id : null,
+                            Roles: payload.Roles || [],
                             token,
                         };
                     } catch {
                         return { isAuthenticated: false };
                     }
                 },
+                createTemporaryToken(amount_of_uses: number, expiresAt: string) {
+                    const token = jwt.sign({ amount_of_uses, isBasicAuth: true, security_level: 0 }, config.JWT_SECRET, { expiresIn: expiresAt })
+                    token_uses.set(token, 0)
+                    return token
+                },
                 Roles: Array.isArray(primaryTenantData.Tenant_Roles)
                     ? primaryTenantData.Tenant_Roles
                     : [primaryTenantData.Tenant_Roles],
-            },
+           
         },
         metadata: {
             requestID: crypto.randomUUID(),
@@ -333,14 +375,14 @@ async function buildRequestContext(req: Request, headers: Headers) {
             params: {},
             query: {},
             json: reqJSON,
-            headers : {}
+            headers: {}
         },
         tenantId: headers.get("tenantid") ?? undefined,
-        json: (value: any, status?: number, statusText?:string) => {
+        json: (value: any, status?: number, statusText?: string) => {
             return Response.json(value, {
-                ...(status && {status}),
+                ...(status && { status }),
                 headers: {
-                    "Access-Control-Origin": config.origin,
+                    "Access-Control-Allow-Origin": config.origin,
                     "Access-Control-Allow-Methods": "GET,PATCH,PUT,DELETE",
                     "Access-Control-Allow-Headers": "Content-Type, Authorization"
                 }
@@ -349,11 +391,23 @@ async function buildRequestContext(req: Request, headers: Headers) {
 
         html: (value: string, status: number, statusText?: string) => {
             return new Response(value, {
-                ...(status && {status}),
-                ...(statusText && {statusText}),
-                headers:{
+                ...(status && { status }),
+                ...(statusText && { statusText }),
+                headers: {
                     "Content-Type": "text/html",
-                    "Access-Control-Origin": config.origin,
+                    "Access-Control-Allow-Origin": config.origin,
+                    "Access-Control-Allow-Methods": "GET,PATCH,PUT,DELETE",
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization"
+                }
+            })
+        },
+        text: (value: string, status?: number, statusText?: string) => {
+            return new Response(value, {
+                ...(status && { status }),
+                ...(statusText && { statusText }),
+                headers: {
+                    "Content-Type": "text/html",
+                    "Access-Control-Allow-Origin": config.origin,
                     "Access-Control-Allow-Methods": "GET,PATCH,PUT,DELETE",
                     "Access-Control-Allow-Headers": "Content-Type, Authorization"
                 }
@@ -362,23 +416,29 @@ async function buildRequestContext(req: Request, headers: Headers) {
     };
 
     const authHeader = headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : authHeader;
+
 
     if (token) {
-        context.principal = await context.services.Clover.Verify(token);
+        if (config.Clover_Tenant_ID) {
+            context.principal = await context.services.Verify(token);
+        } else {
+            const tokenValid = validateToken(token)
+            context.principal.isAuthenticated = tokenValid ? true : false
+        }
+
     }
 
     return context;
 }
 
- 
+
 // --- Initial Server Start --- 
 server = Bun.serve(await createServeConfig());
 console.log(`🚀 Hapta listening at http://localhost:${server.port}`);
 watchFiles();
-const Hapta = {
+
+export {
     DatabaseService,
     Context
 };
- 
-export default Hapta;
