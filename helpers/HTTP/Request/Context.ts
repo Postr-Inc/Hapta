@@ -72,7 +72,21 @@ type AuthOptions = PasswordAuthOptions | MfaAuthOptions | OtpAuthOptions | OAuth
 // Define the final function type
 // (Assuming it returns a Promise with the Principal type from our previous discussions)
 type AuthenticateFn = (options: AuthOptions) => Promise<Principal>;
-type RegisterFn = (data: any ) => Promise<boolean>
+type FieldError = {
+  code: string;
+  message: string;
+};
+
+type RegisterResponse = {
+  success: boolean;
+  data?: any; // The created user record
+  error?: {
+    fieldErrors?: Record<string, FieldError>;
+    formErrors?: string[];
+  };
+  status: number;
+};
+type RegisterFn = (data: { username: string; email: string; password: string }) => Promise<RegisterResponse>;
 type TokenOptions = {
   payload: {
      id: string, 
@@ -80,16 +94,12 @@ type TokenOptions = {
   iat: number
 } 
 type VerifyFn = (token: string) => Promise<Principal>;
- 
+type DecodeFn = (token: string) => Promise<any>;
 export type ServiceConfigs = {
-  Clover: {
-    Tenant_ID: string;
-    Roles?: { name: string; security_level: number }[];
-    Authorized_Users: string[];
-    Authenticate: AuthenticateFn; 
-    Register: RegisterFn;
-    Verify?: VerifyFn;            // just verify token
-  };
+  Authenticate: AuthenticateFn; 
+  Register: RegisterFn;
+  Verify: VerifyFn; 
+  Decode:DecodeFn
 };
 
 // ---
@@ -104,7 +114,10 @@ export type RequestMetadata = {
   ipAddress?: string;
   userAgent?: string;
   body: any,
-  json: {},
+  token: string,
+  json: {
+    [key: string]: any;
+  },
   headers:  Headers | {};
   query:{},
   params: {}
