@@ -1,7 +1,13 @@
 {
+  "name": "hapta",
+  "bin": {
+    "hapta": "./index.ts"
+  },
+  "version": "1.0.18",
+  "description": "modular, scalable, and feature-rich backend framework designed to extend Pocketbase with authentication, schema validation, caching, and tenant-based service orchestration.",
   "dependencies": {
-    "jsonwebtoken": "^9.0.2",
-    "pocketbase": "^0.26.1",
-    "zod": "^4.0.5"
+    "jsonwebtoken": "latest",
+    "pocketbase": "latest",
+    "zod": "latest"
   }
 }
